@@ -63,8 +63,8 @@ class Item:
         self.unit_weight = float(weight)
         self.fold_state = 0
         if self.is_stack:
-            # a stack is always laid flat: thickness stays vertical, only length/width may swap
-            self.updown = False
+            # updown=False: the stack is laid flat (thickness vertical, length/width may swap).
+            # updown=True : the pieces may also stand on edge, the stack then grows sideways.
             self.setShape(0, self.quantity)
 
 
@@ -161,8 +161,18 @@ class Item:
 
 class Bin:
 
-    def __init__(self, partno, WHD, max_weight,corner=0,put_type=1):
-        ''' '''
+    def __init__(self, partno, WHD, max_weight,corner=0,put_type=1,shape='box'):
+        '''
+        shape='cylinder': W is the diameter (H must be equal to W), D the height. Items must fit
+        inside the circle. Packing strategies can be tuned with:
+          stack_rotations : preference order of the rotation types tried for stacks
+          fold_first      : try the most folded shape first
+        '''
+        if shape not in ('box', 'cylinder'):
+            raise ValueError("shape must be 'box' or 'cylinder'")
+        self.shape = shape
+        self.stack_rotations = None
+        self.fold_first = False
         self.partno = partno
         self.width = WHD[0]
         self.height = WHD[1]
@@ -216,11 +226,42 @@ class Bin:
 
 
     def _inside(self, pivot, dimension):
-        return (
+        if not (
             pivot[0] + dimension[0] <= self.width and
             pivot[1] + dimension[1] <= self.height and
             pivot[2] + dimension[2] <= self.depth
-        )
+        ):
+            return False
+        if self.shape == 'cylinder':
+            # the footprint corners must be inside the circle
+            r = float(self.width) / 2
+            x0, y0 = float(pivot[0]) - r, float(pivot[1]) - r
+            x1, y1 = x0 + float(dimension[0]), y0 + float(dimension[1])
+            far_x, far_y = max(abs(x0), abs(x1)), max(abs(y0), abs(y1))
+            return far_x * far_x + far_y * far_y <= r * r + 1e-6
+        return True
+
+
+    def seedPivots(self):
+        '''
+        extra pivots on the floor of a cylinder: the pivots next to the items often fall outside
+        the circle, so a grid of points inside it is tried too
+        '''
+        if self.shape != 'cylinder':
+            return []
+        if getattr(self, '_seeds', None) is None:
+            d = float(self.width)
+            n = 8
+            step = d / n
+            nd = self.number_of_decimals
+            seeds = []
+            for j in range(n):
+                for i in range(n):
+                    x, y = i * step, j * step
+                    if self._inside([x, y, 0], [step / 4, step / 4, 0]):
+                        seeds.append([set2Decimal(x, nd), set2Decimal(y, nd), set2Decimal(0, nd)])
+            self._seeds = seeds
+        return self._seeds
 
 
     def _collides(self, item):
@@ -264,28 +305,41 @@ class Bin:
         return False
 
 
+    # axis along which a stack grows (where its `depth` lands) for each rotation type
+    STACK_AXIS = {RotationType.RT_WHD: 2, RotationType.RT_HWD: 2, RotationType.RT_HDW: 1,
+                  RotationType.RT_WDH: 1, RotationType.RT_DHW: 0, RotationType.RT_DWH: 0}
+
     def _putStack(self, item, pivot):
         '''
-        Put as many pieces of the stack as fit on this pivot, as a single column.
-        Fold states are tried from the least folded to the most folded, so a piece is only
-        folded when the unfolded shape does not fit. The caller decreases item.quantity by the
-        quantity actually placed (self.items[-1].quantity).
+        Put as many pieces of the stack as fit on this pivot, as a single column (laid flat) or row
+        (pieces standing on edge, when item.updown is True).
+        Fold states are tried from the least folded to the most folded (or the reverse with
+        fold_first), so a piece is only folded when the unfolded shape does not fit. The caller
+        decreases item.quantity by the quantity actually placed (self.items[-1].quantity).
         '''
-        z0 = float(pivot[2])
         room_weight = float(self.max_weight) - float(self.getTotalWeight())
         max_by_weight = math.floor(room_weight / item.unit_weight + 1e-9) if item.unit_weight > 0 else item.quantity
         if max_by_weight < 1:
             return False
+        bin_dims = [float(self.width), float(self.height), float(self.depth)]
+        allowed = RotationType.ALL if item.updown else RotationType.Notupdown
+        order = self.stack_rotations or RotationType.ALL
+        rotations = [r for r in order if r in allowed]
+        folds = list(enumerate(item.foldStates()))
+        if self.fold_first:
+            folds.reverse()
 
-        for fold_state, (w, h, t, _, _) in enumerate(item.foldStates()):
-            for rotation in RotationType.Notupdown:
+        for fold_state, (w, h, t, _, _) in folds:
+            for rotation in rotations:
+                axis = self.STACK_AXIS[rotation]
+                a0 = float(pivot[axis])
                 piece = copy.copy(item)
                 piece.rotation_type = rotation
                 piece.position = pivot
                 piece.setShape(fold_state, 1)
                 if not self._inside(pivot, piece.getDimension()):
                     continue
-                k = min(item.quantity, max_by_weight, math.floor((float(self.depth) - z0) / t + 1e-9))
+                k = min(item.quantity, max_by_weight, math.floor((bin_dims[axis] - a0) / t + 1e-9))
                 while k >= 1:
                     piece.setShape(fold_state, k)
                     if not self._inside(pivot, piece.getDimension()):
@@ -297,12 +351,12 @@ class Bin:
                     blockers = [o for o in self.items if intersect(o, piece)]
                     if not blockers:
                         break
-                    # something above the pivot limits the column height
-                    z_block = min(float(o.position[2]) for o in blockers)
-                    if z_block <= z0:
+                    # something ahead of the pivot (on the growth axis) limits the stack
+                    a_block = min(float(o.position[axis]) for o in blockers)
+                    if a_block <= a0:
                         k = 0
                         break
-                    k = min(k - 1, math.floor((z_block - z0) / t + 1e-9))
+                    k = min(k - 1, math.floor((a_block - a0) / t + 1e-9))
                 if k < 1:
                     continue
                 dimension = piece.getDimension()
@@ -327,10 +381,11 @@ class Bin:
         [x,y,z] = [float(pivot[0]),float(pivot[1]),float(pivot[2])]
 
         for _ in range(3):
-            # fix height
-            y = self.checkHeight([x,x+float(w),y,y+float(h),z,z+float(d)])
-            # fix width
-            x = self.checkWidth([x,x+float(w),y,y+float(h),z,z+float(d)])
+            if self.shape != 'cylinder':   # pushing towards x=0 / y=0 would leave the circle
+                # fix height
+                y = self.checkHeight([x,x+float(w),y,y+float(h),z,z+float(d)])
+                # fix width
+                x = self.checkWidth([x,x+float(w),y,y+float(h),z,z+float(d)])
             # fix depth
             z = self.checkDepth([x,x+float(w),y,y+float(h),z,z+float(d)])
 
@@ -511,7 +566,11 @@ class Packer:
                 bin.putCorner(i,corner_lst[i])
 
         elif not bin.items:
-            response = bin.putItem(item, list(START_POSITION))
+            response = False
+            for pivot in [list(START_POSITION)] + bin.seedPivots():
+                response = bin.putItem(item, pivot)
+                if response:
+                    break
 
             if not response:
                 bin.unfitted_items.append(item)
@@ -541,6 +600,11 @@ class Packer:
                         break
                 if fitted:
                     break
+            if not fitted:
+                for pivot in bin.seedPivots():
+                    if bin.putItem(item, pivot, None, rotations):
+                        fitted = True
+                        break
             if fitted:
                 break
         if not fitted:

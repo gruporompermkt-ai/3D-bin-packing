@@ -49,6 +49,17 @@ def conectar():
         con.close()
 
 
+# colunas acrescentadas depois da 1ª versão: (tabela, coluna, definição)
+MIGRACOES = [
+    ("produtos", "orientacao_livre", "INTEGER NOT NULL DEFAULT 1"),
+    ("embalagens", "forma", "TEXT NOT NULL DEFAULT 'retangular'"),
+]
+
+
 def iniciar():
     with conectar() as con:
         con.executescript(SCHEMA)
+        for tabela, coluna, definicao in MIGRACOES:
+            existentes = {r["name"] for r in con.execute(f"PRAGMA table_info({tabela})")}
+            if coluna not in existentes:
+                con.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {definicao}")

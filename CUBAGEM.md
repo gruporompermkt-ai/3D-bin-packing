@@ -18,10 +18,12 @@ Endereço: **http://192.168.0.95:8086/** (API em `/api/...`, documentação auto
 | peso (g) | peso de uma peça |
 | dobras | quantas vezes ainda pode ser dobrada **ao meio**, no comprimento **ou** na largura. Cada dobra corta essa medida pela metade e dobra a espessura |
 | compressão | 0 a 1. **1 = incomprimível**; 0,95 = dentro da pilha a espessura cai para 95%. Só a espessura comprime |
-| tipo | *vestuário* (empilha deitado) ou *rígido* (gira em qualquer eixo, um a um) |
+| tipo | *vestuário* (empilha) ou *rígido* (gira em qualquer eixo, um a um) |
+| orientação | vestuário: *livre* (deitada ou em pé, de lado, em qualquer direção) ou *só deitada* |
 
-Peças iguais viram **pilhas** (colunas) deitadas: altura da coluna = qtd × espessura × compressão
-(× 2 por dobra). O algoritmo só dobra quando a peça aberta não cabe (tenta primeiro sem dobra,
+Peças iguais viram **pilhas**: deitadas (a pilha cresce para cima) ou, com orientação livre, em pé
+(as peças ficam lado a lado, como fichas num arquivo, e a pilha cresce para o lado). Tamanho da pilha
+= qtd × espessura × compressão (× 2 por dobra). O algoritmo só dobra quando a peça aberta não cabe (tenta primeiro sem dobra,
 depois dobra no comprimento, depois na largura). Rígidos entram primeiro (embaixo) e o vestuário
 preenche o resto.
 
@@ -35,17 +37,38 @@ o de menos volumes.
 `peso taxável = max(peso real + tara, C × L × A / 1.000.000 × fator)`. O fator padrão é 300 kg/m³
 (variável `FATOR_CUBAGEM`) e pode ser informado por pedido.
 
+## Iterações (densidade)
+
+Cada volume é montado várias vezes com estratégias diferentes: deitada primeiro, em pé primeiro (nos
+dois sentidos), menores primeiro, dobrada primeiro e variações aleatórias de orientação (com semente
+fixa, então o mesmo pedido dá sempre o mesmo resultado). Fica a montagem com mais peças, depois mais
+volume e depois o menor volume cobrado. O padrão é 8 iterações; na tela dá para subir até 40 (mais
+denso, mais lento). A estratégia vencedora aparece em cada volume.
+
+Exemplo real (fardo 002, 30 × 40, F2505/38 ×10 + F1078/P ×15 + F1078/PP ×10):
+só deitada, 1 tentativa = 76 cm (47,5%); orientação livre + 8 iterações = **47 cm (77%)**, peso
+cubado de 27,4 para 16,9 kg.
+
 ## Fardo
 
-Cadastre a embalagem com tipo **fardo**: comprimento × largura são a base e a altura é a **máxima**.
-Os fardos cheios vão até a altura máxima (ou até o peso máximo). No último fardo, que fica parcial,
-o sistema procura a menor altura em que todo o conteúdo ainda cabe, espalhando as pilhas pela base. A
-altura final, arredondada para cima em cm inteiro, é a que entra no volume, no peso cubado e na tela.
+Cadastre a embalagem com tipo **fardo** e escolha a forma:
+
+- **retangular**: comprimento × largura são a base e a altura é a **máxima**;
+- **cilíndrico (flexível)**: comprimento = **diâmetro máximo** (a largura é ignorada) e a altura máxima.
+  As peças precisam caber dentro do círculo. O diâmetro final é o menor círculo, centrado, que envolve o
+  conteúdo, e a altura final é o topo do conteúdo. O peso cubado usa o "caixote" Ø × Ø × altura, que é
+  como as transportadoras costumam cobrar cilindros; a ocupação usa o volume real do cilindro.
+
+Os fardos cheios vão até a altura máxima ou até o peso máximo. No último fardo, que fica parcial,
+o sistema procura o fardo mais compacto em que todo o conteúdo ainda cabe: a menor altura e, no
+cilíndrico, também diâmetros menores (100%, 85%, 70% e 55% do máximo). As medidas finais,
+arredondadas para cima em cm inteiro, entram no volume, no peso cubado e na tela.
 
 ## Simulação 3D
 
 Na aba Cubagem, cada volume tem **Ver 3D**: arraste para girar, use a roda do mouse para zoom e o
-botão direito para mover. Cada peça da pilha aparece como uma camada, com uma cor por produto/tamanho.
+botão direito para mover. Cada peça da pilha aparece como uma camada (deitada ou em pé), com uma cor
+por produto/tamanho. O fardo cilíndrico é desenhado como um cilindro translúcido.
 A barra (◀ ▶ / ▶ montar) mostra a montagem pilha a pilha, de baixo para cima, com a posição de cada
 pilha em cm a partir do canto (comprimento / largura / altura). A API devolve isso em
 `volumes[].layout`.

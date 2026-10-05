@@ -82,6 +82,7 @@
       <label>Dobras<input id="p-dobras" type="number" step="1" min="0" max="4" value="0"></label>
       <label>Compressão<input id="p-compressao" type="number" step="0.01" min="0.01" max="1" value="1"></label>
       <label>Tipo<select id="p-empilhavel"><option value="1">Vestuário (empilha)</option><option value="0">Rígido</option></select></label>
+      <label>Orientação<select id="p-orientacao_livre"><option value="1">Livre (deitada ou em pé)</option><option value="0">Só deitada</option></select></label>
       <button class="p" id="p-salvar">Salvar</button>
     </div>
     <p class="hint">Compressão de 0 a 1: 1 = não comprime; 0,95 = a espessura cai para 95% na pilha. Cada dobra corta o comprimento ou a largura ao meio e dobra a espessura.</p>
@@ -102,6 +103,7 @@
       <label>Código<input id="e-codigo" size="8"></label>
       <label>Descrição<input id="e-descricao" size="18"></label>
       <label>Tipo<select id="e-tipo"><option>caixa</option><option>fardo</option></select></label>
+      <label>Forma (fardo)<select id="e-forma"><option value="retangular">retangular</option><option value="cilindrico">cilíndrico</option></select></label>
       <label>Comprimento cm (interno)<input id="e-comprimento" type="number" step="0.1" min="0"></label>
       <label>Largura cm<input id="e-largura" type="number" step="0.1" min="0"></label>
       <label>Altura cm (fardo: máxima)<input id="e-altura" type="number" step="0.1" min="0"></label>
@@ -111,7 +113,7 @@
       <label>Ativa<select id="e-ativo"><option value="1">sim</option><option value="0">não</option></select></label>
       <button class="p" id="e-salvar">Salvar</button>
     </div>
-    <p class="hint">Caixa: medidas internas, altura fixa. Fardo: comprimento × largura da base e a altura máxima; a altura final é calculada pelo conteúdo e é ela que entra no peso cubado. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
+    <p class="hint">Caixa: medidas internas, altura fixa. Fardo retangular: comprimento × largura da base e a altura máxima; a altura final vem do conteúdo. Fardo cilíndrico (flexível): comprimento = diâmetro máximo (largura é ignorada); diâmetro e altura finais vêm do conteúdo e o peso cubado usa o "caixote" Ø × Ø × altura. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
     <div class="msg" id="e-msg"></div>
   </div>
   <div class="card"><h2>Embalagens</h2><div class="tbl"><table id="e-tabela"></table></div></div>
@@ -123,6 +125,7 @@
     <div class="row">
       <label>Nº do pedido<input id="c-pedido" size="10"></label>
       <label>Fator de cubagem kg/m³<input id="c-fator" type="number" step="1" min="1" value="300"></label>
+      <label>Iterações (mais = mais denso, mais lento)<input id="c-iter" type="number" step="1" min="1" max="40" value="8"></label>
     </div>
     <p class="hint">Uma linha por item: código, tamanho e quantidade (ex.: <code>F2505 38 120</code>). Também aceita colar do Excel.</p>
     <textarea id="c-itens" placeholder="F2505 38 120&#10;F2505 40 80"></textarea>
@@ -180,15 +183,15 @@ async function carregarProdutos() {
   produtos = await api('GET', '/api/produtos');
   const f = $('#p-filtro').value.trim().toUpperCase();
   const rows = produtos.filter(p => !f || p.codigo.includes(f));
-  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th></th></tr>' +
+  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th>Orientação</th><th></th></tr>' +
     rows.map((p, i) => `<tr><td>${esc(p.codigo)}</td><td>${esc(p.tamanho)}</td><td>${esc(p.descricao)}</td>
       <td class="n">${fmt(p.comprimento)}</td><td class="n">${fmt(p.largura)}</td><td class="n">${fmt(p.espessura)}</td>
       <td class="n">${fmt(p.peso_g)}</td><td class="n">${p.dobras}</td><td class="n">${fmt(p.compressao)}</td>
-      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td>
+      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td><td>${p.empilhavel ? (p.orientacao_livre ? 'livre' : 'só deitada') : ''}</td>
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#p-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
     const p = rows[b.dataset.edit];
-    $('#p-codigo').value = p.codigo; $('#p-tamanho').value = p.tamanho; $('#p-empilhavel').value = p.empilhavel ? '1' : '0';
+    $('#p-codigo').value = p.codigo; $('#p-tamanho').value = p.tamanho; $('#p-empilhavel').value = p.empilhavel ? '1' : '0'; $('#p-orientacao_livre').value = p.orientacao_livre ? '1' : '0';
     P_FIELDS.forEach(k => $('#p-' + k).value = p[k]); window.scrollTo(0, 0);
   });
   $('#p-tabela').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
@@ -201,7 +204,7 @@ $('#p-filtro').oninput = carregarProdutos;
 $('#p-salvar').onclick = async () => {
   const cod = $('#p-codigo').value.trim(), tam = $('#p-tamanho').value.trim();
   if (!cod || !tam) return msg('#p-msg', 'Informe código e tamanho');
-  const body = {empilhavel: $('#p-empilhavel').value === '1'};
+  const body = {empilhavel: $('#p-empilhavel').value === '1', orientacao_livre: $('#p-orientacao_livre').value === '1'};
   P_FIELDS.forEach(k => body[k] = k === 'descricao' ? $('#p-' + k).value : num($('#p-' + k).value));
   try { await api('PUT', `/api/produtos/${encodeURIComponent(cod)}/${encodeURIComponent(tam)}`, body); msg('#p-msg', `Salvo ${cod.toUpperCase()}/${tam.toUpperCase()}`, true); carregarProdutos(); }
   catch (e) { msg('#p-msg', e.message); }
@@ -214,12 +217,12 @@ $('#imp-btn').onclick = async () => {
 };
 
 // ---------------- embalagens
-const E_FIELDS = ['descricao','tipo','comprimento','largura','altura','peso_max_g','tara_g','custo'];
+const E_FIELDS = ['descricao','tipo','forma','comprimento','largura','altura','peso_max_g','tara_g','custo'];
 async function carregarEmbalagens() {
   const rows = await api('GET', '/api/embalagens');
   $('#e-tabela').innerHTML = '<tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="n">C×L×A cm</th><th class="n">Peso máx. g</th><th class="n">Tara g</th><th class="n">Custo</th><th>Ativa</th><th></th></tr>' +
-    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}</td>
-      <td class="n">${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
+    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}${e.tipo === 'fardo' ? ' ' + esc(e.forma) : ''}</td>
+      <td class="n">${e.forma === 'cilindrico' && e.tipo === 'fardo' ? `Ø ${fmt(e.comprimento,1)} × ${fmt(e.altura,1)}` : `${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}`}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
       <td class="n">${fmt(e.tara_g,0)}</td><td class="n">${fmt(e.custo)}</td><td>${e.ativo ? 'sim' : 'não'}</td>
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#e-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
@@ -234,13 +237,21 @@ async function carregarEmbalagens() {
 $('#e-salvar').onclick = async () => {
   const cod = $('#e-codigo').value.trim(); if (!cod) return msg('#e-msg', 'Informe o código');
   const body = {ativo: $('#e-ativo').value === '1'};
-  E_FIELDS.forEach(k => { const v = $('#e-' + k).value; body[k] = ['descricao','tipo'].includes(k) ? v : (v === '' ? null : num(v)); });
+  E_FIELDS.forEach(k => { const v = $('#e-' + k).value; body[k] = ['descricao','tipo','forma'].includes(k) ? v : (v === '' ? null : num(v)); });
+  if (body.forma === 'cilindrico' && body.largura == null) body.largura = body.comprimento;
   if (body.tara_g == null) body.tara_g = 0;
   try { await api('PUT', `/api/embalagens/${encodeURIComponent(cod)}`, body); msg('#e-msg', `Salva ${cod.toUpperCase()}`, true); carregarEmbalagens(); }
   catch (e) { msg('#e-msg', e.message); }
 };
 
 // ---------------- cubagem
+function dimTxt(v) {
+  const [c, l, a] = v.dimensoes_cm;
+  let t = v.forma === 'cilindrico' ? `Ø ${fmt(c,0)} × ${fmt(a,0)} cm` : `${fmt(c,1)} × ${fmt(l,1)} × ${fmt(a,1)} cm`;
+  if (v.forma === 'cilindrico') t += `, máx. Ø ${fmt(v.diametro_max_cm,0)} × ${fmt(v.altura_max_cm,0)}`;
+  else if (v.altura_max_cm) t += `, altura máx. ${fmt(v.altura_max_cm,0)}`;
+  return t;
+}
 $('#c-calc').onclick = async () => {
   const itens = [];
   for (const linha of $('#c-itens').value.split('\n')) {
@@ -252,7 +263,7 @@ $('#c-calc').onclick = async () => {
   if (!itens.length) return msg('#c-msg', 'Nenhuma linha válida (código tamanho quantidade)');
   $('#c-msg').textContent = 'Calculando...'; $('#c-msg').className = 'msg';
   try {
-    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null});
+    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null, iteracoes: Math.round(num($('#c-iter').value)) || 8});
     $('#c-msg').textContent = '';
     const box = $('#c-res'); box.style.display = 'block';
     if (!r.ok) { box.innerHTML = `<p class="msg err">${esc(r.motivo)}</p>`; return; }
@@ -261,10 +272,10 @@ $('#c-calc').onclick = async () => {
       <div class="kpi"><div><b>${t.volumes}</b><span>volumes</span></div><div><b>${t.pecas}</b><span>peças</span></div>
       <div><b>${fmt(t.peso_real_kg)} kg</b><span>peso real</span></div><div><b>${fmt(t.peso_taxavel_kg)} kg</b><span>peso taxável</span></div>
       ${t.custo_total != null ? `<div><b>R$ ${fmt(t.custo_total)}</b><span>embalagens</span></div>` : ''}</div>
-      <p class="hint">Critério: ${esc(r.criterio)} · fator ${fmt(r.fator_cubagem,0)} kg/m³</p>` +
-      r.volumes.map((v, i) => `<div class="vol"><div class="row" style="justify-content:space-between"><h3>Volume ${i + 1}: ${v.tipo === 'fardo' ? 'fardo ' : ''}${esc(v.embalagem)} (${v.dimensoes_cm.map(x => fmt(x,1)).join(' × ')} cm${v.altura_max_cm ? `, altura final de no máx. ${fmt(v.altura_max_cm,0)}` : ''})</h3>
+      <p class="hint">Critério: ${esc(r.criterio)} · fator ${fmt(r.fator_cubagem,0)} kg/m³ · ${r.iteracoes} iterações por volume</p>` +
+      r.volumes.map((v, i) => `<div class="vol"><div class="row" style="justify-content:space-between"><h3>Volume ${i + 1}: ${v.tipo === 'fardo' ? 'fardo ' + (v.forma === 'cilindrico' ? 'cilíndrico ' : '') : ''}${esc(v.embalagem)} (${dimTxt(v)})</h3>
         <button class="s" data-ver="${i}">Ver 3D</button></div>
-        <div class="hint">ocupação ${fmt(v.ocupacao_pct,1)}% · real ${fmt(v.peso_real_kg)} kg · cubado ${fmt(v.peso_cubado_kg)} kg · taxável ${fmt(v.peso_taxavel_kg)} kg</div>
+        <div class="hint">ocupação ${fmt(v.ocupacao_pct,1)}% · estratégia: ${esc(v.estrategia)} · real ${fmt(v.peso_real_kg)} kg · cubado ${fmt(v.peso_cubado_kg)} kg · taxável ${fmt(v.peso_taxavel_kg)} kg</div>
         <div class="tbl"><table><tr><th>Produto</th><th>Tam.</th><th class="n">Qtd</th><th>Forma</th></tr>
         ${v.itens.map(it => `<tr><td>${esc(it.codigo)}</td><td>${esc(it.tamanho)}</td><td class="n">${it.qtd}</td><td>${esc(it.forma)}</td></tr>`).join('')}
         </table></div></div>`).join('');
@@ -307,7 +318,7 @@ const viewer = (() => {
   function mostrar(v, n) {
     iniciar(); parar(); vol = v;
     $('#viewer').classList.add('on');
-    $('#v-titulo').textContent = `Simulação — volume ${n}: ${v.embalagem} (${v.dimensoes_cm.map(x => fmt(x,1)).join(' × ')} cm)`;
+    $('#v-titulo').textContent = `Simulação — volume ${n}: ${v.embalagem} (${dimTxt(v)})`;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xeef1f5);
     scene.add(new THREE.AmbientLight(0xffffff, .65));
@@ -316,19 +327,41 @@ const viewer = (() => {
     const [C, L, A] = v.dimensoes_cm;
     const raiz = new THREE.Group(); raiz.position.set(-C / 2, -A / 2, -L / 2); scene.add(raiz);
     // embalagem: arestas + fundo
-    const borda = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(C, A, L)), new THREE.LineBasicMaterial({color: 0x1d2330}));
-    borda.position.set(C / 2, A / 2, L / 2); raiz.add(borda);
-    const fundo = new THREE.Mesh(new THREE.PlaneGeometry(C, L), new THREE.MeshLambertMaterial({color: 0xc8a97e, side: THREE.DoubleSide}));
-    fundo.rotation.x = -Math.PI / 2; fundo.position.set(C / 2, -0.05, L / 2); raiz.add(fundo);
+    if (v.forma === 'cilindrico') {
+      // fardo cilíndrico: invólucro translúcido + aros + fundo redondo
+      const cil = new THREE.Mesh(new THREE.CylinderGeometry(C / 2, C / 2, A, 64, 1, true),
+        new THREE.MeshLambertMaterial({color: 0x9fb3c8, transparent: true, opacity: .18, side: THREE.DoubleSide, depthWrite: false}));
+      cil.position.set(C / 2, A / 2, L / 2); raiz.add(cil);
+      for (const y of [0, A]) {
+        const aro = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
+          Array.from({length: 64}, (_, k) => new THREE.Vector3(C / 2 + C / 2 * Math.cos(k / 32 * Math.PI), y, L / 2 + C / 2 * Math.sin(k / 32 * Math.PI)))),
+          new THREE.LineBasicMaterial({color: 0x1d2330}));
+        raiz.add(aro);
+      }
+      const fundo = new THREE.Mesh(new THREE.CircleGeometry(C / 2, 64), new THREE.MeshLambertMaterial({color: 0xc8a97e, side: THREE.DoubleSide}));
+      fundo.rotation.x = -Math.PI / 2; fundo.position.set(C / 2, -0.05, L / 2); raiz.add(fundo);
+    } else {
+      const borda = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(C, A, L)), new THREE.LineBasicMaterial({color: 0x1d2330}));
+      borda.position.set(C / 2, A / 2, L / 2); raiz.add(borda);
+      const fundo = new THREE.Mesh(new THREE.PlaneGeometry(C, L), new THREE.MeshLambertMaterial({color: 0xc8a97e, side: THREE.DoubleSide}));
+      fundo.rotation.x = -Math.PI / 2; fundo.position.set(C / 2, -0.05, L / 2); raiz.add(fundo);
+    }
 
     const skus = [...new Set(v.layout.map(b => b.sku))];
     const corDe = s => CORES[skus.indexOf(s) % CORES.length];
     pilhas = v.layout.map(b => {
       const grupo = new THREE.Group();
-      const n = Math.max(1, b.qtd), esp = b.a / n;
-      for (let k = 0; k < n; k++) {      // cada peça da pilha, com uma folga mínima para enxergar as camadas
-        const p = caixa(b.c - .2, esp - Math.min(.15, esp * .2), b.l - .2, corDe(b.sku), 1);
-        p.position.set(b.x + b.c / 2, b.z + esp * k + esp / 2, b.y + b.l / 2);
+      // cada peça da pilha, cortada no eixo em que a pilha cresce (z = deitada; x/y = em pé),
+      // com uma folga mínima para enxergar as camadas
+      const n = Math.max(1, b.qtd), eixo = b.eixo || 'z';
+      const tam = {x: b.c, y: b.l, z: b.a}, esp = tam[eixo] / n, folga = Math.min(.15, esp * .2);
+      for (let k = 0; k < n; k++) {
+        const d = {x: b.c - .2, y: b.l - .2, z: b.a - .2};
+        d[eixo] = esp - folga;
+        const o = {x: b.x + b.c / 2, y: b.y + b.l / 2, z: b.z + b.a / 2};
+        o[eixo] = b[eixo] + esp * k + esp / 2;
+        const p = caixa(d.x, d.z, d.y, corDe(b.sku), 1);   // three.js: (x, altura, y)
+        p.position.set(o.x, o.z, o.y);
         grupo.add(p);
       }
       raiz.add(grupo);

@@ -5,14 +5,14 @@ Unidades: centímetros e gramas. Compressão de 0 a 1 (1 = incomprimível), apli
 import os
 import re
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from py3dbp.cartonizer import Embalagem, Produto, cartonize
+from py3dbp.cartonizer import ITERACOES_PADRAO, Embalagem, Produto, cartonize
 
 from . import db
 
@@ -38,13 +38,15 @@ class ProdutoIn(BaseModel):
     dobras: int = Field(0, ge=0, le=4)
     compressao: float = Field(1.0, gt=0, le=1)
     empilhavel: bool = True
+    orientacao_livre: bool = True
 
 
 class EmbalagemIn(BaseModel):
     descricao: str = ""
-    tipo: str = "caixa"
+    tipo: Literal["caixa", "fardo"] = "caixa"
+    forma: Literal["retangular", "cilindrico"] = "retangular"
     comprimento: float = Field(gt=0, description="cm, interno")
-    largura: float = Field(gt=0)
+    largura: Optional[float] = Field(None, gt=0, description="cm; ignorada no fardo cilíndrico")
     altura: float = Field(gt=0)
     peso_max_g: float = Field(gt=0)
     tara_g: float = Field(0, ge=0)
@@ -68,6 +70,7 @@ class PedidoIn(BaseModel):
     itens: List[ItemPedido] = Field(min_length=1)
     fator_cubagem: Optional[float] = Field(None, gt=0)
     embalagens: Optional[List[str]] = None
+    iteracoes: int = Field(ITERACOES_PADRAO, ge=1, le=40)
 
 
 # ---------------------------------------------------------------- produtos
@@ -89,13 +92,15 @@ def listar_produtos(codigo: Optional[str] = None):
 def salvar_produto(codigo: str, tamanho: str, p: ProdutoIn):
     with db.conectar() as con:
         con.execute(
-            """INSERT INTO produtos (codigo, tamanho, descricao, comprimento, largura, espessura, peso_g, dobras, compressao, empilhavel)
-               VALUES (?,?,?,?,?,?,?,?,?,?)
+            """INSERT INTO produtos (codigo, tamanho, descricao, comprimento, largura, espessura, peso_g, dobras, compressao,
+                                   empilhavel, orientacao_livre)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(codigo, tamanho) DO UPDATE SET descricao=excluded.descricao, comprimento=excluded.comprimento,
                  largura=excluded.largura, espessura=excluded.espessura, peso_g=excluded.peso_g, dobras=excluded.dobras,
-                 compressao=excluded.compressao, empilhavel=excluded.empilhavel, atualizado_em=datetime('now','localtime')""",
+                 compressao=excluded.compressao, empilhavel=excluded.empilhavel, orientacao_livre=excluded.orientacao_livre,
+                 atualizado_em=datetime('now','localtime')""",
             (_norm(codigo), tamanho.strip().upper(), p.descricao, p.comprimento, p.largura, p.espessura, p.peso_g,
-             p.dobras, p.compressao, int(p.empilhavel)))
+             p.dobras, p.compressao, int(p.empilhavel), int(p.orientacao_livre)))
     return {"ok": True}
 
 
@@ -162,14 +167,20 @@ def listar_embalagens():
 def salvar_embalagem(codigo: str, e: EmbalagemIn):
     if e.tara_g >= e.peso_max_g:
         raise HTTPException(422, "a tara deve ser menor que o peso máximo")
+    forma = e.forma if e.tipo == "fardo" else "retangular"
+    largura = e.comprimento if forma == "cilindrico" else e.largura   # cilindro: comprimento = diâmetro
+    if largura is None:
+        raise HTTPException(422, "informe a largura")
     with db.conectar() as con:
         con.execute(
-            """INSERT INTO embalagens (codigo, descricao, tipo, comprimento, largura, altura, peso_max_g, tara_g, custo, ativo)
-               VALUES (?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(codigo) DO UPDATE SET descricao=excluded.descricao, tipo=excluded.tipo, comprimento=excluded.comprimento,
-                 largura=excluded.largura, altura=excluded.altura, peso_max_g=excluded.peso_max_g, tara_g=excluded.tara_g,
-                 custo=excluded.custo, ativo=excluded.ativo, atualizado_em=datetime('now','localtime')""",
-            (_norm(codigo), e.descricao, e.tipo, e.comprimento, e.largura, e.altura, e.peso_max_g, e.tara_g, e.custo, int(e.ativo)))
+            """INSERT INTO embalagens (codigo, descricao, tipo, forma, comprimento, largura, altura, peso_max_g, tara_g, custo, ativo)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(codigo) DO UPDATE SET descricao=excluded.descricao, tipo=excluded.tipo, forma=excluded.forma,
+                 comprimento=excluded.comprimento, largura=excluded.largura, altura=excluded.altura,
+                 peso_max_g=excluded.peso_max_g, tara_g=excluded.tara_g, custo=excluded.custo, ativo=excluded.ativo,
+                 atualizado_em=datetime('now','localtime')""",
+            (_norm(codigo), e.descricao, e.tipo, forma, e.comprimento, largura, e.altura, e.peso_max_g, e.tara_g, e.custo,
+             int(e.ativo)))
     return {"ok": True}
 
 
@@ -194,18 +205,19 @@ def calcular(pedido: PedidoIn):
                 faltando.append(f"{_norm(it.codigo)}/{it.tamanho.strip().upper()}")
                 continue
             linhas.append((Produto(r["codigo"], r["tamanho"], r["comprimento"], r["largura"], r["espessura"], r["peso_g"],
-                                   r["dobras"], r["compressao"], bool(r["empilhavel"])), it.quantidade))
+                                   r["dobras"], r["compressao"], bool(r["empilhavel"]), bool(r["orientacao_livre"])),
+                           it.quantidade))
         if faltando:
             raise HTTPException(422, {"mensagem": "produtos sem cadastro", "produtos": faltando})
         rows = con.execute("SELECT * FROM embalagens WHERE ativo=1").fetchall()
     catalogo = [Embalagem(r["codigo"], r["comprimento"], r["largura"], r["altura"], r["peso_max_g"], r["tara_g"],
-                          r["custo"], r["tipo"]) for r in rows]
+                          r["custo"], r["tipo"], r["forma"]) for r in rows]
     if pedido.embalagens:
         quero = {_norm(c) for c in pedido.embalagens}
         catalogo = [e for e in catalogo if e.codigo in quero]
     if not catalogo:
         raise HTTPException(422, "nenhuma embalagem ativa cadastrada")
-    resultado = cartonize(linhas, catalogo, pedido.fator_cubagem or FATOR_CUBAGEM)
+    resultado = cartonize(linhas, catalogo, pedido.fator_cubagem or FATOR_CUBAGEM, pedido.iteracoes)
     resultado["pedido"] = pedido.pedido
     return resultado
 

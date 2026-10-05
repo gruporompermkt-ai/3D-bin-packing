@@ -142,10 +142,10 @@ def test_cartonize_item_que_nao_cabe():
 
 def test_pack_one_varios_tamanhos():
     p40 = Produto("F2505", "40", 34.50, 26.67, 2.20, 506.33, 1, 0.95)
-    vol, sobra, b = pack_one(Embalagem("CX", 70, 55, 30, 30000), [(F2505_38, 10), (p40, 10)])
+    vol, sobra = pack_one(Embalagem("CX", 70, 55, 30, 30000), [(F2505_38, 10), (p40, 10)])
     assert sobra == []
     assert sorted((i["tamanho"], i["qtd"]) for i in vol.itens) == [("38", 10), ("40", 10)]
-    sem_sobreposicao(b)
+    layout_valido(vol.layout, (70, 55, 30))
 
 
 def test_layout_para_visualizacao():
@@ -197,3 +197,60 @@ def test_fardo_limitado_pelo_peso():
     r = cartonize([(F2505_38, 150)], [FARDO])
     assert [sum(i["qtd"] for i in v["itens"]) for v in r["volumes"]] == [58, 58, 34]
     assert all(v["peso_real_kg"] <= 30 for v in r["volumes"])
+
+
+# ---------------------------------------------------------------- orientação, iterações, cilindro
+def layout_valido(layout, dims, cilindro=False):
+    """sem sobreposição e dentro da embalagem (no cilindro, dentro do círculo)"""
+    for b in layout:
+        assert b["x"] >= -1e-6 and b["y"] >= -1e-6 and b["z"] >= -1e-6, b
+        assert b["x"] + b["c"] <= dims[0] + 1e-6 and b["y"] + b["l"] <= dims[1] + 1e-6 and b["z"] + b["a"] <= dims[2] + 1e-6, b
+        if cilindro:
+            r = dims[0] / 2
+            fx = max(abs(b["x"] - r), abs(b["x"] + b["c"] - r))
+            fy = max(abs(b["y"] - r), abs(b["y"] + b["l"] - r))
+            assert fx * fx + fy * fy <= r * r + 0.05, b
+    for a, b in itertools.combinations(layout, 2):
+        sobrepoe = all(min(a[k] + a[d], b[k] + b[d]) - max(a[k], b[k]) > 1e-6 for k, d in (("x", "c"), ("y", "l"), ("z", "a")))
+        assert not sobrepoe, (a, b)
+
+
+def test_pilha_em_pe_ocupa_o_vao():
+    # caixa 36 x 22 x 36: a peça deitada (34,33 x 24,67) não cabe na base; em pé (ao longo da largura) cabe
+    p, b = empacota((36, 22, 36), pilha(10, compressao=0.95, dobras=0))
+    assert pecas(b) == 0                                   # só deitada: não cabe
+    livre = Item("F2505/38", "F2505/38", "cube", (34.33, 24.67, 2.20), 508.33, 2, 100, True, "blue",
+                 compress_ratio=0.95, quantity=10)
+    p, b = empacota((36, 22, 36), livre)               # 34,33 x 24,67 deitada não cabe; em pé sim
+    assert pecas(b) == 10
+    assert any(Bin.STACK_AXIS[i.rotation_type] != 2 for i in b.items)  # ficou em pé
+    sem_sobreposicao(b)
+
+
+def test_iteracoes_nao_pioram():
+    pedido = [(F2505_38, 30), (Produto("F1078", "P", 30, 25, 3, 300, 0, 0.9), 15),
+              (Produto("F1078", "PP", 15, 15, 4.2, 200, 0, 0.9), 10)]
+    emb = Embalagem("002", 30, 40, 150, 30000, tipo="fardo")
+    alturas = [cartonize(pedido, [emb], iteracoes=n)["volumes"][0]["dimensoes_cm"][2] for n in (1, 8)]
+    assert alturas[1] <= alturas[0]
+
+
+def test_fardo_cilindrico_flexivel():
+    fd = Embalagem("CIL", 80, 0, 100, 30000, tipo="fardo", forma="cilindrico")
+    r = cartonize([(F2505_38, 30)], [fd], iteracoes=4)
+    v = r["volumes"][0]
+    assert r["ok"] and r["totais"]["pecas"] == 30
+    d, d2, h = v["dimensoes_cm"]
+    assert d == d2 and d <= 80 and h <= 100
+    assert v["diametro_max_cm"] == 80 and v["forma"] == "cilindrico"
+    assert v["peso_cubado_kg"] == pytest.approx(d * d * h / 1e6 * 300, abs=0.001)  # cobrado pelo "caixote"
+    assert v["volume_real_m3"] == pytest.approx(3.14159 * (d / 2) ** 2 * h / 1e6, rel=1e-3)
+    layout_valido(v["layout"], (d, d, h), cilindro=True)
+
+
+def test_cilindro_nao_aceita_canto_fora_do_circulo():
+    b = Bin("cil", (40, 40, 50), 100000, shape="cylinder")
+    b.formatNumbers(1)
+    assert b._inside([0, 0, 0], [10, 10, 1]) is False          # canto (0,0) está fora do círculo
+    assert b._inside([10, 10, 0], [20, 20, 1]) is True
+    assert len(b.seedPivots()) > 0
