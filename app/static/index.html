@@ -35,7 +35,18 @@
   .kpi { display:flex; gap:24px; flex-wrap:wrap; margin:8px 0; }
   .kpi div b { display:block; font-size:18px; }
   .kpi div span { color:var(--mute); font-size:12px; }
+  #viewer { display:none; }
+  #viewer.on { display:block; }
+  #v-canvas { width:100%; height:460px; border:1px solid var(--line); border-radius:8px; background:#eef1f5; position:relative; overflow:hidden; touch-action:none; }
+  #v-canvas canvas { display:block; }
+  .v-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+  .v-bar input[type=range] { flex:1; min-width:180px; }
+  #v-passo { font-size:13px; min-height:20px; }
+  .legend { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--mute); }
+  .legend i { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-2px; margin-right:4px; }
 </style>
+<script src="/static/vendor/three.min.js"></script>
+<script src="/static/vendor/OrbitControls.js"></script>
 </head>
 <body>
 <header>
@@ -93,14 +104,14 @@
       <label>Tipo<select id="e-tipo"><option>caixa</option><option>fardo</option></select></label>
       <label>Comprimento cm (interno)<input id="e-comprimento" type="number" step="0.1" min="0"></label>
       <label>Largura cm<input id="e-largura" type="number" step="0.1" min="0"></label>
-      <label>Altura cm<input id="e-altura" type="number" step="0.1" min="0"></label>
+      <label>Altura cm (fardo: máxima)<input id="e-altura" type="number" step="0.1" min="0"></label>
       <label>Peso máx. g<input id="e-peso_max_g" type="number" step="1" min="0"></label>
       <label>Tara g<input id="e-tara_g" type="number" step="1" min="0" value="0"></label>
       <label>Custo R$<input id="e-custo" type="number" step="0.01" min="0"></label>
       <label>Ativa<select id="e-ativo"><option value="1">sim</option><option value="0">não</option></select></label>
       <button class="p" id="e-salvar">Salvar</button>
     </div>
-    <p class="hint">Use as medidas internas. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
+    <p class="hint">Caixa: medidas internas, altura fixa. Fardo: comprimento × largura da base e a altura máxima; a altura final é calculada pelo conteúdo e é ela que entra no peso cubado. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
     <div class="msg" id="e-msg"></div>
   </div>
   <div class="card"><h2>Embalagens</h2><div class="tbl"><table id="e-tabela"></table></div></div>
@@ -119,6 +130,20 @@
     <div class="msg" id="c-msg"></div>
   </div>
   <div class="card" id="c-res" style="display:none"></div>
+  <div class="card" id="viewer">
+    <div class="row" style="justify-content:space-between"><h2 id="v-titulo">Simulação</h2>
+      <button class="s" id="v-fechar">fechar</button></div>
+    <div id="v-canvas"></div>
+    <div class="v-bar">
+      <button class="s" id="v-ant">◀</button>
+      <input type="range" id="v-slider" min="0" value="0">
+      <button class="s" id="v-prox">▶</button>
+      <button class="s" id="v-play">▶ montar</button>
+    </div>
+    <div id="v-passo"></div>
+    <div class="legend" id="v-legenda"></div>
+    <p class="hint">Arraste para girar, roda do mouse para zoom, botão direito para mover. A barra mostra a montagem pilha a pilha, de baixo para cima.</p>
+  </div>
 </section>
 
 </main>
@@ -237,13 +262,115 @@ $('#c-calc').onclick = async () => {
       <div><b>${fmt(t.peso_real_kg)} kg</b><span>peso real</span></div><div><b>${fmt(t.peso_taxavel_kg)} kg</b><span>peso taxável</span></div>
       ${t.custo_total != null ? `<div><b>R$ ${fmt(t.custo_total)}</b><span>embalagens</span></div>` : ''}</div>
       <p class="hint">Critério: ${esc(r.criterio)} · fator ${fmt(r.fator_cubagem,0)} kg/m³</p>` +
-      r.volumes.map((v, i) => `<div class="vol"><h3>Volume ${i + 1}: ${esc(v.embalagem)} (${v.dimensoes_cm.map(x => fmt(x,1)).join(' × ')} cm)</h3>
+      r.volumes.map((v, i) => `<div class="vol"><div class="row" style="justify-content:space-between"><h3>Volume ${i + 1}: ${v.tipo === 'fardo' ? 'fardo ' : ''}${esc(v.embalagem)} (${v.dimensoes_cm.map(x => fmt(x,1)).join(' × ')} cm${v.altura_max_cm ? `, altura final de no máx. ${fmt(v.altura_max_cm,0)}` : ''})</h3>
+        <button class="s" data-ver="${i}">Ver 3D</button></div>
         <div class="hint">ocupação ${fmt(v.ocupacao_pct,1)}% · real ${fmt(v.peso_real_kg)} kg · cubado ${fmt(v.peso_cubado_kg)} kg · taxável ${fmt(v.peso_taxavel_kg)} kg</div>
         <div class="tbl"><table><tr><th>Produto</th><th>Tam.</th><th class="n">Qtd</th><th>Forma</th></tr>
         ${v.itens.map(it => `<tr><td>${esc(it.codigo)}</td><td>${esc(it.tamanho)}</td><td class="n">${it.qtd}</td><td>${esc(it.forma)}</td></tr>`).join('')}
         </table></div></div>`).join('');
+    box.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => viewer.mostrar(r.volumes[b.dataset.ver], Number(b.dataset.ver) + 1));
+    if (r.volumes.length) viewer.mostrar(r.volumes[0], 1);
   } catch (e) { msg('#c-msg', e.message); }
 };
+
+// ---------------- simulação 3D (three.js). Eixos do cálculo: x = comprimento, y = largura, z = altura.
+// No three.js o eixo vertical é Y, então (x, y, z) do cálculo vira (x, z, y).
+const CORES = ['#4472c4','#ed7d31','#70ad47','#ffc000','#5b9bd5','#a5a5a5','#9e480e','#264478','#636363','#997300'];
+const viewer = (() => {
+  const el = $('#v-canvas');
+  let renderer, scene, camera, controls, pecas = [], pilhas = [], timer = null, vol = null;
+
+  function iniciar() {
+    if (renderer) return;
+    renderer = new THREE.WebGLRenderer({antialias: true});
+    renderer.setPixelRatio(window.devicePixelRatio);
+    el.appendChild(renderer.domElement);
+    camera = new THREE.PerspectiveCamera(40, 1, 0.1, 5000);
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    new ResizeObserver(redimensionar).observe(el);
+    (function loop() { requestAnimationFrame(loop); if (!scene) return; controls.update(); renderer.render(scene, camera); })();
+  }
+  function redimensionar() {
+    const w = el.clientWidth, h = el.clientHeight;
+    renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  function caixa(c, a, l, cor, opacidade) {
+    const geo = new THREE.BoxGeometry(c, a, l);
+    const g = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({color: cor, transparent: opacidade < 1, opacity: opacidade});
+    g.add(new THREE.Mesh(geo, mat));
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({color: 0x1d2330, transparent: true, opacity: .55})));
+    return g;
+  }
+
+  function mostrar(v, n) {
+    iniciar(); parar(); vol = v;
+    $('#viewer').classList.add('on');
+    $('#v-titulo').textContent = `Simulação — volume ${n}: ${v.embalagem} (${v.dimensoes_cm.map(x => fmt(x,1)).join(' × ')} cm)`;
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeef1f5);
+    scene.add(new THREE.AmbientLight(0xffffff, .65));
+    const luz = new THREE.DirectionalLight(0xffffff, .55); luz.position.set(1, 2, 1.5); scene.add(luz);
+
+    const [C, L, A] = v.dimensoes_cm;
+    const raiz = new THREE.Group(); raiz.position.set(-C / 2, -A / 2, -L / 2); scene.add(raiz);
+    // embalagem: arestas + fundo
+    const borda = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(C, A, L)), new THREE.LineBasicMaterial({color: 0x1d2330}));
+    borda.position.set(C / 2, A / 2, L / 2); raiz.add(borda);
+    const fundo = new THREE.Mesh(new THREE.PlaneGeometry(C, L), new THREE.MeshLambertMaterial({color: 0xc8a97e, side: THREE.DoubleSide}));
+    fundo.rotation.x = -Math.PI / 2; fundo.position.set(C / 2, -0.05, L / 2); raiz.add(fundo);
+
+    const skus = [...new Set(v.layout.map(b => b.sku))];
+    const corDe = s => CORES[skus.indexOf(s) % CORES.length];
+    pilhas = v.layout.map(b => {
+      const grupo = new THREE.Group();
+      const n = Math.max(1, b.qtd), esp = b.a / n;
+      for (let k = 0; k < n; k++) {      // cada peça da pilha, com uma folga mínima para enxergar as camadas
+        const p = caixa(b.c - .2, esp - Math.min(.15, esp * .2), b.l - .2, corDe(b.sku), 1);
+        p.position.set(b.x + b.c / 2, b.z + esp * k + esp / 2, b.y + b.l / 2);
+        grupo.add(p);
+      }
+      raiz.add(grupo);
+      return grupo;
+    });
+
+    const d = Math.max(C, L, A);
+    camera.position.set(d * 1.3, d * 1.1, d * 1.6); controls.target.set(0, 0, 0); controls.update();
+    redimensionar();
+
+    $('#v-legenda').innerHTML = skus.map(s => {
+      const qtd = v.layout.filter(b => b.sku === s).reduce((t, b) => t + b.qtd, 0);
+      return `<span><i style="background:${corDe(s)}"></i>${esc(s)} · ${qtd} pç</span>`;
+    }).join('');
+    const sl = $('#v-slider'); sl.max = pilhas.length; sl.value = pilhas.length; passo(pilhas.length);
+    $('#viewer').scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+
+  function passo(n) {
+    n = Math.max(0, Math.min(pilhas.length, n));
+    $('#v-slider').value = n;
+    pilhas.forEach((g, i) => {
+      g.visible = i < n;
+      g.traverse(o => { if (o.isMesh) o.material.emissive?.setHex(i === n - 1 && n < pilhas.length ? 0x333333 : 0); });
+    });
+    if (n === 0) { $('#v-passo').textContent = `Embalagem vazia · ${pilhas.length} pilhas para montar`; return; }
+    const b = vol.layout[n - 1];
+    $('#v-passo').innerHTML = `<b>Passo ${n}/${pilhas.length}:</b> ${esc(b.sku)} × ${b.qtd} (${esc(b.forma)}) · base ${fmt(b.c,1)} × ${fmt(b.l,1)} cm, altura ${fmt(b.a,1)} cm · posição ${fmt(b.x,1)} / ${fmt(b.y,1)} / ${fmt(b.z,1)} cm`;
+  }
+  function parar() { if (timer) { clearInterval(timer); timer = null; $('#v-play').textContent = '▶ montar'; } }
+  $('#v-slider').oninput = e => { parar(); passo(Number(e.target.value)); };
+  $('#v-ant').onclick = () => { parar(); passo(Number($('#v-slider').value) - 1); };
+  $('#v-prox').onclick = () => { parar(); passo(Number($('#v-slider').value) + 1); };
+  $('#v-play').onclick = () => {
+    if (timer) return parar();
+    let n = Number($('#v-slider').value) >= pilhas.length ? 0 : Number($('#v-slider').value);
+    passo(n); $('#v-play').textContent = '❚❚ pausar';
+    timer = setInterval(() => { passo(++n); if (n >= pilhas.length) parar(); }, 700);
+  };
+  $('#v-fechar').onclick = () => { parar(); $('#viewer').classList.remove('on'); };
+  return {mostrar};
+})();
 
 carregarProdutos(); carregarEmbalagens();
 </script>

@@ -146,3 +146,54 @@ def test_pack_one_varios_tamanhos():
     assert sobra == []
     assert sorted((i["tamanho"], i["qtd"]) for i in vol.itens) == [("38", 10), ("40", 10)]
     sem_sobreposicao(b)
+
+
+def test_layout_para_visualizacao():
+    r = cartonize([(F2505_38, 25)], [Embalagem("CX", 70, 50, 21, 30000)])
+    lay = r["volumes"][0]["layout"]
+    assert sum(b["qtd"] for b in lay) == 25
+    assert [b["z"] for b in lay] == sorted(b["z"] for b in lay)   # ordem de montagem: de baixo para cima
+    for b in lay:                                                  # tudo dentro da caixa
+        assert b["x"] + b["c"] <= 70 and b["y"] + b["l"] <= 50 and b["z"] + b["a"] <= 21
+
+
+# ---------------------------------------------------------------- fardo
+FARDO = Embalagem("FD", 70, 50, 60, 30000, tara_g=150, tipo="fardo")
+
+
+def test_fardo_altura_acompanha_conteudo():
+    r = cartonize([(F2505_38, 20)], [FARDO], fator_cubagem=300)
+    v = r["volumes"][0]
+    assert r["totais"]["volumes"] == 1 and r["totais"]["pecas"] == 20
+    # base 70x50 comporta 2x2 colunas: 20 peças = 4 colunas de 5 -> 5 x 2,09 = 10,45 -> 11 cm
+    assert v["dimensoes_cm"] == [70, 50, 11]
+    assert v["altura_max_cm"] == 60
+    assert v["peso_cubado_kg"] == pytest.approx(70 * 50 * 11 / 1e6 * 300)
+    assert max(b["z"] + b["a"] for b in v["layout"]) <= 11
+
+
+def test_fardo_mais_conteudo_fica_mais_alto():
+    alturas = [cartonize([(F2505_38, q)], [FARDO])["volumes"][0]["dimensoes_cm"][2] for q in (8, 40, 80)]
+    assert alturas == sorted(alturas) and alturas[0] < alturas[-1]
+
+
+def test_fardo_respeita_altura_maxima_e_abre_outro():
+    # 60 cm / 2,09 = 28 peças por coluna x 4 colunas = 112 por fardo (peso liberado para testar só a altura)
+    fardo = Embalagem("FD", 70, 50, 60, 100000, tara_g=150, tipo="fardo")
+    r = cartonize([(F2505_38, 150)], [fardo])
+    alt = [v["dimensoes_cm"][2] for v in r["volumes"]]
+    assert r["totais"]["volumes"] == 2 and r["totais"]["pecas"] == 150
+    assert all(a <= 60 for a in alt) and alt[1] < alt[0]
+
+
+def test_fardo_ou_caixa_pelo_peso_taxavel():
+    caixa = Embalagem("CX", 70, 50, 60, 30000)
+    r = cartonize([(F2505_38, 20)], [caixa, FARDO])
+    assert r["volumes"][0]["embalagem"] == "FD"      # mesma base, mas o fardo só cobra a altura usada
+
+
+def test_fardo_limitado_pelo_peso():
+    # 30 kg - 150 g de tara = 29,85 kg -> 58 peças de 508,33 g (59 passaria)
+    r = cartonize([(F2505_38, 150)], [FARDO])
+    assert [sum(i["qtd"] for i in v["itens"]) for v in r["volumes"]] == [58, 58, 34]
+    assert all(v["peso_real_kg"] <= 30 for v in r["volumes"])

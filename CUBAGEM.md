@@ -4,7 +4,8 @@ Fork de [jerry800416/3D-bin-packing](https://github.com/jerry800416/3D-bin-packi
 
 - correções de bugs do original (lista abaixo, cada uma com teste em `tests/test_bugs.py`);
 - **dobra** e **compressão** de peças de vestuário;
-- escolha de embalagens para um pedido (`py3dbp/cartonizer.py`);
+- escolha de embalagens para um pedido (`py3dbp/cartonizer.py`), em **caixas** ou **fardos**;
+- simulação 3D da montagem de cada volume na tela (three.js, sem depender de internet);
 - API + tela web de cadastro e cálculo (`app/`), rodando em Docker no servidor 192.168.0.95.
 
 Endereço: **http://192.168.0.95:8086/** (API em `/api/...`, documentação automática em `/docs`).
@@ -33,6 +34,21 @@ o de menos volumes.
 
 `peso taxável = max(peso real + tara, C × L × A / 1.000.000 × fator)`. O fator padrão é 300 kg/m³
 (variável `FATOR_CUBAGEM`) e pode ser informado por pedido.
+
+## Fardo
+
+Cadastre a embalagem com tipo **fardo**: comprimento × largura são a base e a altura é a **máxima**.
+Os fardos cheios vão até a altura máxima (ou até o peso máximo). No último fardo, que fica parcial,
+o sistema procura a menor altura em que todo o conteúdo ainda cabe, espalhando as pilhas pela base. A
+altura final, arredondada para cima em cm inteiro, é a que entra no volume, no peso cubado e na tela.
+
+## Simulação 3D
+
+Na aba Cubagem, cada volume tem **Ver 3D**: arraste para girar, use a roda do mouse para zoom e o
+botão direito para mover. Cada peça da pilha aparece como uma camada, com uma cor por produto/tamanho.
+A barra (◀ ▶ / ▶ montar) mostra a montagem pilha a pilha, de baixo para cima, com a posição de cada
+pilha em cm a partir do canto (comprimento / largura / altura). A API devolve isso em
+`volumes[].layout`.
 
 ## Bugs corrigidos do original
 
@@ -75,6 +91,5 @@ informe o código e cole as linhas do Excel (vírgula decimal aceita; cabeçalho
 
 ## Pendências
 
-- fardo com altura variável (tipo `fardo` já existe no cadastro, mas é tratado como caixa);
 - calibração do índice de compressão com volumes reais;
 - leitura de pedidos/produtos do Sisplan.

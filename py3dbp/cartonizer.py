@@ -10,6 +10,7 @@ sobrou. Ganha o plano de menor custo (quando todas as embalagens têm custo) ou 
 taxável, e no empate o de menos volumes.
 '''
 import copy
+import math
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -45,7 +46,7 @@ class Embalagem:
     peso_max_g: float           # peso bruto máximo (conteúdo + tara)
     tara_g: float = 0.0
     custo: Optional[float] = None
-    tipo: str = 'caixa'
+    tipo: str = 'caixa'         # 'caixa' ou 'fardo' (fardo: base fixa, altura = conteúdo, até `altura`)
 
     @property
     def volume_cm3(self):
@@ -58,6 +59,17 @@ class Volume:
     itens: list = field(default_factory=list)   # [{'sku','codigo','tamanho','qtd','forma'}]
     peso_itens_g: float = 0.0
     volume_itens_cm3: float = 0.0
+    # posição de cada pilha/item, na ordem de montagem (de baixo para cima)
+    layout: list = field(default_factory=list)
+
+    @property
+    def altura_final(self):
+        ''' caixa: altura interna; fardo: topo do conteúdo arredondado para cima (cm inteiro) '''
+        e = self.embalagem
+        if e.tipo != 'fardo' or not self.layout:
+            return e.altura
+        topo = max(b['z'] + b['a'] for b in self.layout)
+        return min(e.altura, math.ceil(round(topo, 6)))
 
 
 def _items_for(linhas):
@@ -111,6 +123,12 @@ def pack_one(embalagem, linhas):
         agrupado[chave] = agrupado.get(chave, 0) + it.quantity
         vol.peso_itens_g += float(it.weight)
         vol.volume_itens_cm3 += float(it.getVolume())
+        x, y, z = (float(v) for v in it.position)
+        c, l, a = (float(v) for v in it.getDimension())
+        # x = comprimento, y = largura, z = altura (vertical)
+        vol.layout.append({'sku': p.sku, 'qtd': it.quantity, 'forma': forma,
+                           'x': x, 'y': y, 'z': z, 'c': c, 'l': l, 'a': a})
+    vol.layout.sort(key=lambda b: (b['z'], b['y'], b['x']))
     for (sku, forma), qtd in agrupado.items():
         codigo, tamanho = sku.split('/', 1)
         vol.itens.append({'sku': sku, 'codigo': codigo, 'tamanho': tamanho, 'qtd': qtd, 'forma': forma})
@@ -130,9 +148,15 @@ def _plan_with(embalagem, linhas, catalogo):
     if not volumes:
         return []
 
-    # troca o último volume (normalmente parcial) pela menor embalagem que comporta tudo dele
     ultimo = volumes[-1]
     conteudo = [(_find(linhas, i['sku']), i['qtd']) for i in _merge(ultimo.itens)]
+    if embalagem.tipo == 'fardo':
+        # o empacotador enche uma coluna até o topo antes de abrir outra; no último fardo (parcial)
+        # procura a menor altura em que tudo ainda cabe, espalhando as peças pela base
+        volumes[-1] = _fardo_mais_baixo(embalagem, conteudo, ultimo)
+        return volumes
+
+    # caixa: troca o último volume (normalmente parcial) pela menor embalagem que comporta tudo dele
     for menor in sorted(catalogo, key=lambda e: e.volume_cm3):
         if menor.volume_cm3 >= embalagem.volume_cm3:
             break
@@ -141,6 +165,23 @@ def _plan_with(embalagem, linhas, catalogo):
             volumes[-1] = vol
             break
     return volumes
+
+
+def _fardo_mais_baixo(fardo, conteudo, atual):
+    ''' busca binária (cm inteiro) da menor altura máxima que comporta todo o conteúdo '''
+    melhor = atual
+    lo, hi = 1, int(math.ceil(atual.altura_final))
+    while lo < hi:
+        meio = (lo + hi) // 2
+        teste = copy.copy(fardo)
+        teste.altura = meio
+        vol, sobra, _ = pack_one(teste, conteudo)
+        if not sobra and vol.itens:
+            vol.embalagem = fardo          # mantém a altura máxima do cadastro no resultado
+            melhor, hi = vol, meio
+        else:
+            lo = meio + 1
+    return melhor
 
 
 def _merge(itens):
@@ -160,20 +201,23 @@ def _find(linhas, sku):
 
 def resumo_volume(v, fator_cubagem):
     e = v.embalagem
-    volume_m3 = e.comprimento * e.largura * e.altura / 1_000_000
+    altura = v.altura_final
+    volume_m3 = e.comprimento * e.largura * altura / 1_000_000
     peso_real_kg = (v.peso_itens_g + e.tara_g) / 1000
     peso_cubado_kg = volume_m3 * fator_cubagem
     return {
         'embalagem': e.codigo,
         'tipo': e.tipo,
-        'dimensoes_cm': [e.comprimento, e.largura, e.altura],
+        'dimensoes_cm': [e.comprimento, e.largura, altura],
+        'altura_max_cm': e.altura if e.tipo == 'fardo' else None,
         'volume_m3': round(volume_m3, 4),
-        'ocupacao_pct': round(v.volume_itens_cm3 / e.volume_cm3 * 100, 1) if e.volume_cm3 else 0,
+        'ocupacao_pct': round(v.volume_itens_cm3 / (volume_m3 * 1_000_000) * 100, 1) if volume_m3 else 0,
         'peso_real_kg': round(peso_real_kg, 3),
         'peso_cubado_kg': round(peso_cubado_kg, 3),
         'peso_taxavel_kg': round(max(peso_real_kg, peso_cubado_kg), 3),
         'custo': e.custo,
         'itens': v.itens,
+        'layout': v.layout,
     }
 
 
