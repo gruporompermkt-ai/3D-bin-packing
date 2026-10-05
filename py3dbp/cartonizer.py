@@ -6,8 +6,14 @@ Unidades: centímetros e gramas. A embalagem é descrita pelas medidas INTERNAS
 
 Embalagens:
   caixa                 medidas fixas.
-  fardo retangular      base comprimento x largura fixa; altura final = conteúdo (até a altura máxima).
-  fardo cilíndrico      flexível: comprimento = diâmetro máximo; diâmetro e altura finais = conteúdo.
+  fardo                 paredes flexíveis: as medidas finais são as do conteúdo, até as máximas do
+                        cadastro. Forma:
+                          flexivel   (padrão) testa retangular e cilíndrico e fica com o mais compacto;
+                          retangular conteúdo em bloco (envelope comprimento x largura x altura);
+                          cilindrico conteúdo dentro de um círculo (diâmetro <= menor lado da base).
+
+Vestuário curvável: quando a peça reta não cabe num vão, pode ser curvada a 90 graus (formato L,
+deitada) para ocupar um canto. Um arco é aproximado pelo L.
 
 Cada volume é montado com várias estratégias (iterações: ordem das orientações das pilhas,
 dobrar antes ou depois, ordem dos itens e variações aleatórias) e fica a mais densa.
@@ -45,6 +51,7 @@ class Produto:
     compressao: float = 1.0     # 1 = incomprimível; 0,95 = a espessura cai para 95% dentro da pilha
     empilhavel: bool = True     # False = item rígido (gira em qualquer eixo, um a um)
     orientacao_livre: bool = True   # vestuário: True = pode ficar em pé (de lado); False = só deitada
+    curvavel: bool = True           # vestuário: pode ser curvado em L para ocupar um canto
 
     @property
     def sku(self):
@@ -54,22 +61,31 @@ class Produto:
 @dataclass
 class Embalagem:
     codigo: str
-    comprimento: float          # cm, medidas internas (fardo cilíndrico: diâmetro máximo)
-    largura: float              # fardo cilíndrico: ignorada (= diâmetro)
-    altura: float               # fardo: altura máxima
+    comprimento: float          # cm, medidas internas (fardo: máximas)
+    largura: float
+    altura: float
     peso_max_g: float           # peso bruto máximo (conteúdo + tara)
     tara_g: float = 0.0
     custo: Optional[float] = None
     tipo: str = 'caixa'         # 'caixa' ou 'fardo'
-    forma: str = 'retangular'   # fardo: 'retangular' ou 'cilindrico'
+    forma: str = 'flexivel'     # fardo: 'flexivel', 'retangular' ou 'cilindrico'
 
     def __post_init__(self):
-        if self.cilindrico:
+        if self.tipo == 'fardo' and self.forma == 'cilindrico' and not self.largura:
             self.largura = self.comprimento
 
     @property
-    def cilindrico(self):
-        return self.tipo == 'fardo' and self.forma == 'cilindrico'
+    def formas(self):
+        ''' formatos que o conteúdo pode assumir dentro desta embalagem '''
+        if self.tipo != 'fardo':
+            return ['caixa']
+        if self.forma == 'flexivel':
+            return ['retangular', 'cilindrico']
+        return [self.forma]
+
+    @property
+    def diametro_max(self):
+        return min(self.comprimento, self.largura or self.comprimento)
 
     @property
     def volume_cm3(self):
@@ -87,6 +103,14 @@ class Volume:
     # posição de cada pilha/item, na ordem de montagem (de baixo para cima)
     layout: list = field(default_factory=list)
     estrategia: str = ''
+    formato: str = 'caixa'                      # 'caixa', 'retangular' ou 'cilindrico'
+
+    @property
+    def cilindrico(self):
+        return self.formato == 'cilindrico'
+
+    def _extensao(self, chave, tam):
+        return max(b[chave] + b[tam] for b in self.layout)
 
     @property
     def altura_final(self):
@@ -94,30 +118,36 @@ class Volume:
         e = self.embalagem
         if e.tipo != 'fardo' or not self.layout:
             return e.altura
-        topo = max(b['z'] + b['a'] for b in self.layout)
-        return min(e.altura, math.ceil(round(topo, 6)))
+        return min(e.altura, math.ceil(round(self._extensao('z', 'a'), 6)))
 
     @property
     def diametro_final(self):
         ''' fardo cilíndrico: menor círculo (centrado) que envolve o conteúdo, cm inteiro para cima '''
         e = self.embalagem
-        if not e.cilindrico or not self.layout:
-            return e.comprimento
+        if not self.layout:
+            return e.diametro_max
         r = self.dims_empacotamento[0] / 2
         dist = 0.0
         for b in self.layout:
             fx = max(abs(b['x'] - r), abs(b['x'] + b['c'] - r))
             fy = max(abs(b['y'] - r), abs(b['y'] + b['l'] - r))
             dist = max(dist, math.hypot(fx, fy))
-        return min(e.comprimento, math.ceil(round(2 * dist, 6)))
+        return min(e.diametro_max, math.ceil(round(2 * dist, 6)))
 
     @property
     def dimensoes_finais(self):
         e = self.embalagem
-        if e.cilindrico:
+        if e.tipo != 'fardo':
+            return [e.comprimento, e.largura, e.altura]
+        if self.cilindrico:
             d = self.diametro_final
             return [d, d, self.altura_final]
-        return [e.comprimento, e.largura, self.altura_final]
+        if not self.layout:
+            return [e.comprimento, e.largura, e.altura]
+        # paredes flexíveis: o fardo fica do tamanho do conteúdo
+        return [min(e.comprimento, math.ceil(round(self._extensao('x', 'c'), 6))),
+                min(e.largura, math.ceil(round(self._extensao('y', 'l'), 6))),
+                self.altura_final]
 
     @property
     def envelope_cm3(self):
@@ -135,8 +165,10 @@ def _items_for(linhas):
             continue
         whd = (p.comprimento, p.largura, p.espessura)
         if p.empilhavel:
+            # quantity > 1 garante que até uma peça só seja tratada como pilha (dobra/curva/compressão)
             items.append(Item('{}#{}'.format(p.sku, n), p.sku, 'cube', whd, p.peso_g, 2, 100, bool(p.orientacao_livre),
-                              '#4472C4', fold_count=p.dobras, compress_ratio=p.compressao, quantity=int(qtd), sku=p))
+                              '#4472C4', fold_count=p.dobras, compress_ratio=p.compressao, quantity=int(qtd), sku=p,
+                              bendable=bool(p.curvavel)))
         else:
             for k in range(int(qtd)):
                 items.append(Item('{}#{}.{}'.format(p.sku, n, k), p.sku, 'cube', whd, p.peso_g, 1, 100, True,
@@ -179,12 +211,15 @@ def estrategias(n):
     return out
 
 
-def _pack_strategy(embalagem, dims, linhas, estrategia):
+def _pack_strategy(embalagem, dims, linhas, estrategia, formato):
     nome, ordem, dobrar_primeiro, maiores_primeiro = estrategia
     packer = Packer()
     capacidade = embalagem.peso_max_g - embalagem.tara_g
+    if formato == 'cilindrico':
+        d = min(dims[0], dims[1])
+        dims = (d, d, dims[2])
     b = Bin(embalagem.codigo, dims, max(capacidade, 0),
-            shape='cylinder' if embalagem.cilindrico else 'box')
+            shape='cylinder' if formato == 'cilindrico' else 'box')
     b.stack_rotations = ordem
     b.fold_first = dobrar_primeiro
     packer.addBin(b)
@@ -193,12 +228,14 @@ def _pack_strategy(embalagem, dims, linhas, estrategia):
     packer.pack(bigger_first=maiores_primeiro, distribute_items=True, fix_point=True, check_stable=True,
                 support_surface_ratio=0.75, number_of_decimals=NUMBER_OF_DECIMALS)
 
-    vol = Volume(embalagem, dims_empacotamento=tuple(dims), estrategia=nome)
+    vol = Volume(embalagem, dims_empacotamento=tuple(dims), estrategia=nome, formato=formato)
     agrupado = {}
     for it in b.items:
         p = it.sku
         forma = it.foldDescription() if it.is_stack else 'rígido'
-        if it.is_stack and Bin.STACK_AXIS[it.rotation_type] != 2:
+        if it.bend:
+            forma = 'curvada em L'
+        elif it.is_stack and Bin.STACK_AXIS[it.rotation_type] != 2:
             forma += ', em pé'
         chave = (p.sku, forma)
         agrupado[chave] = agrupado.get(chave, 0) + it.quantity
@@ -209,6 +246,7 @@ def _pack_strategy(embalagem, dims, linhas, estrategia):
         c, l, a = (float(v) for v in it.getDimension())
         # x = comprimento, y = largura, z = altura (vertical); eixo = para onde a pilha cresce
         vol.layout.append({'sku': p.sku, 'qtd': it.quantity, 'forma': forma,
+                           'camadas': it.layers or it.quantity, 'parte_l': it.bend,
                            'eixo': EIXOS[Bin.STACK_AXIS[it.rotation_type]] if it.is_stack else None,
                            'x': x, 'y': y, 'z': z, 'c': c, 'l': l, 'a': a})
     vol.layout.sort(key=lambda q: (q['z'], q['y'], q['x']))
@@ -224,17 +262,19 @@ def _score(vol):
     return (-vol.pecas, -round(vol.volume_itens_cm3, 1), vol.envelope_cm3, topo)
 
 
-def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None):
+def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None, formatos=None):
     '''
-    Enche UMA embalagem com o que couber das linhas, testando `iteracoes` estratégias.
+    Enche UMA embalagem com o que couber das linhas, testando `iteracoes` estratégias em cada
+    formato possível (fardo flexível: retangular e cilíndrico).
     Retorna (Volume, linhas_que_sobraram). Volume vazio = nada coube.
     '''
     dims = dims or (embalagem.comprimento, embalagem.largura, embalagem.altura)
     melhor = None
-    for est in estrategias(iteracoes):
-        vol, sobra = _pack_strategy(embalagem, dims, linhas, est)
-        if melhor is None or _score(vol) < _score(melhor[0]):
-            melhor = (vol, sobra)
+    for formato in formatos or embalagem.formas:
+        for est in estrategias(iteracoes):
+            vol, sobra = _pack_strategy(embalagem, dims, linhas, est, formato)
+            if melhor is None or _score(vol) < _score(melhor[0]):
+                melhor = (vol, sobra)
     return melhor
 
 
@@ -268,25 +308,35 @@ def _plan_with(embalagem, linhas, catalogo, iteracoes):
     return volumes
 
 
-def _cabe(fardo, dims, conteudo, iteracoes):
-    vol, sobra = pack_one(fardo, conteudo, iteracoes, dims)
+def _cabe(fardo, dims, conteudo, iteracoes, formato):
+    vol, sobra = pack_one(fardo, conteudo, iteracoes, dims, [formato])
     return vol if (vol.itens and not sobra) else None
 
 
-def _menor_altura(fardo, base, conteudo, hi, iteracoes):
-    ''' busca binária (cm inteiro) da menor altura máxima que comporta todo o conteúdo '''
-    melhor = None
-    lo = 1
+def _menor_altura(fardo, base, conteudo, lo, hi, iteracoes, formato):
+    '''
+    busca binária (cm inteiro) da menor altura entre lo e hi que comporta todo o conteúdo;
+    None se nem hi comporta
+    '''
+    if lo > hi:
+        return None
+    melhor = _cabe(fardo, (base[0], base[1], hi), conteudo, iteracoes, formato)
+    if melhor is None:
+        return None
     while lo < hi:
         meio = (lo + hi) // 2
-        vol = _cabe(fardo, (base[0], base[1], meio), conteudo, iteracoes)
+        vol = _cabe(fardo, (base[0], base[1], meio), conteudo, iteracoes, formato)
         if vol:
             melhor, hi = vol, meio
         else:
             lo = meio + 1
-    if melhor is None:
-        melhor = _cabe(fardo, (base[0], base[1], hi), conteudo, iteracoes)
     return melhor
+
+
+def _volume_conteudo(conteudo):
+    ''' volume das peças já comprimidas: limite inferior para o volume de qualquer fardo '''
+    return sum(p.comprimento * p.largura * p.espessura * (p.compressao if p.empilhavel else 1) * q
+               for p, q in conteudo)
 
 
 def _fardo_compacto(fardo, conteudo, atual, iteracoes):
@@ -297,28 +347,36 @@ def _fardo_compacto(fardo, conteudo, atual, iteracoes):
       cilíndrico (flexível): diâmetros decrescentes x menor altura para cada um.
     '''
     melhor = atual
-    hi = int(math.ceil(atual.altura_final))
     # a busca testa muitas alturas: usa poucas estratégias nela e todas só na montagem final
     it_busca = min(iteracoes, 3)
-    if fardo.cilindrico:
-        dmax = fardo.comprimento
-        diametros = sorted({max(1, math.ceil(dmax * f)) for f in (1, .85, .7, .55)}, reverse=True)
-    else:
-        diametros = [None]
+    C, L = fardo.comprimento, fardo.largura
+    vol_min = _volume_conteudo(conteudo)
+    melhor_env = atual.envelope_cm3
     escolhido = None
-    for d in diametros:
-        base = (d, d) if d else (fardo.comprimento, fardo.largura)
-        vol = _menor_altura(fardo, base, conteudo, hi, it_busca)
-        if vol is None:
-            if d:
-                break       # diâmetro menor não comporta: os seguintes também não
-            continue
-        if escolhido is None or vol.envelope_cm3 < escolhido[1].envelope_cm3:
-            escolhido = (base, vol)
+    for formato in fardo.formas:
+        if formato == 'cilindrico':
+            dmax = fardo.diametro_max
+            bases = [(d, d) for d in sorted({max(1, math.ceil(dmax * f)) for f in (1, .85, .7, .55)}, reverse=True)]
+        else:
+            # paredes flexíveis: bases menores que a máxima também valem
+            bases = sorted({(max(1, math.ceil(C * fx)), max(1, math.ceil(L * fy)))
+                            for fx in (1, .8, .6) for fy in (1, .8, .6)}, key=lambda b: -b[0] * b[1])
+        for base in bases:
+            area = base[0] * base[1]
+            area_util = math.pi * (base[0] / 2) ** 2 if formato == 'cilindrico' else area
+            # poda: abaixo de lo o conteúdo não cabe; acima de hi o envelope já perde do melhor
+            lo = max(1, math.ceil(vol_min / area_util))
+            hi = min(int(math.ceil(fardo.altura)), math.floor(melhor_env / area))
+            vol = _menor_altura(fardo, base, conteudo, lo, hi, it_busca, formato)
+            if vol is None:
+                continue
+            if vol.envelope_cm3 < melhor_env:
+                melhor_env = vol.envelope_cm3
+                escolhido = (formato, vol)
     if escolhido:
-        base, vol = escolhido
-        altura = int(math.ceil(vol.altura_final))
-        final = _cabe(fardo, vol.dims_empacotamento[:2] + (altura,), conteudo, iteracoes) or vol
+        formato, vol = escolhido
+        final = _cabe(fardo, vol.dims_empacotamento[:2] + (int(math.ceil(vol.altura_final)),),
+                      conteudo, iteracoes, formato) or vol
         for candidato in (final, vol):
             if candidato.envelope_cm3 < melhor.envelope_cm3:
                 melhor = candidato
@@ -344,24 +402,25 @@ def resumo_volume(v, fator_cubagem):
     e = v.embalagem
     dims = v.dimensoes_finais
     volume_m3 = dims[0] * dims[1] * dims[2] / 1_000_000          # envelope (caixote em volta do fardo)
-    if e.cilindrico:
+    if v.cilindrico:
         volume_real_m3 = math.pi * (dims[0] / 2) ** 2 * dims[2] / 1_000_000
     else:
         volume_real_m3 = volume_m3
     peso_real_kg = (v.peso_itens_g + e.tara_g) / 1000
     peso_cubado_kg = volume_m3 * fator_cubagem
     layout = v.layout
-    if e.cilindrico:
+    if v.cilindrico:
         # recentra o conteúdo no cilindro final (x, y de 0 até o diâmetro final)
         desloc = (v.dims_empacotamento[0] - dims[0]) / 2
         layout = [dict(q, x=round(q['x'] - desloc, 2), y=round(q['y'] - desloc, 2)) for q in layout]
     return {
         'embalagem': e.codigo,
         'tipo': e.tipo,
-        'forma': e.forma if e.tipo == 'fardo' else 'caixa',
+        'forma': v.formato,
         'dimensoes_cm': dims,
+        'max_cm': [e.comprimento, e.largura, e.altura] if e.tipo == 'fardo' else None,
         'altura_max_cm': e.altura if e.tipo == 'fardo' else None,
-        'diametro_max_cm': e.comprimento if e.cilindrico else None,
+        'diametro_max_cm': e.diametro_max if v.cilindrico else None,
         'volume_m3': round(volume_m3, 4),
         'volume_real_m3': round(volume_real_m3, 4),
         'ocupacao_pct': round(v.volume_itens_cm3 / (volume_real_m3 * 1_000_000) * 100, 1) if volume_real_m3 else 0,

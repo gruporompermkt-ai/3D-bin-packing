@@ -19,7 +19,7 @@ def _load_matplotlib():
 class Item:
 
     def __init__(self, partno,name,typeof, WHD, weight, level, loadbear, updown, color,
-                 fold_count=0, compress_ratio=1.0, quantity=1, sku=None):
+                 fold_count=0, compress_ratio=1.0, quantity=1, sku=None, bendable=False):
         '''
         WHD    : for stacks (quantity > 1, fold_count > 0 or compress_ratio < 1) it is the size of ONE piece:
                  W = length, H = width, D = thickness. The pieces are stacked along D (laid flat).
@@ -28,6 +28,8 @@ class Item:
                          Every fold halves W or H and doubles the thickness.
         compress_ratio : 0 < r <= 1. Thickness of a piece inside the stack = thickness * r (1 = incompressible).
         quantity       : number of identical pieces represented by this item.
+        bendable       : the piece may be bent at 90 degrees (L shape, laid flat) to take a corner
+                         when the straight shape does not fit.
         '''
         if not 0 < compress_ratio <= 1:
             raise ValueError('compress_ratio must be in (0, 1]')
@@ -62,6 +64,11 @@ class Item:
         self.piece_whd = (float(WHD[0]), float(WHD[1]), float(WHD[2]))
         self.unit_weight = float(weight)
         self.fold_state = 0
+        self.bendable = bool(bendable)
+        # L-shaped stacks are placed as two blocks: bend = 'A' (carries quantity and weight) or
+        # 'B' (second arm, quantity 0); layers = pieces drawn in the block
+        self.bend = None
+        self.layers = None
         if self.is_stack:
             # updown=False: the stack is laid flat (thickness vertical, length/width may swap).
             # updown=True : the pieces may also stand on edge, the stack then grows sideways.
@@ -364,7 +371,109 @@ class Bin:
                     continue
                 self._commit(piece, dimension)
                 return True
+        return self._putBent(item, pivot, max_by_weight)
+
+
+    def _putBent(self, item, pivot, max_by_weight):
+        '''
+        L-shaped stack: the pieces are bent at 90 degrees and laid flat, taking a corner.
+        Arm A runs along x (a x width), arm B along y (width x (b - width)); a + b = length + width,
+        so the area of the piece is kept. Only tried when no straight shape fits on this pivot.
+        The four corner positions of the L inside its a x b bounding box are tried.
+        '''
+        if not (item.bendable and item.is_stack):
+            return False
+        length, width, _ = item.piece_whd
+        t = item.foldStates()[0][2]
+        nd = self.number_of_decimals
+        px, py, pz = (float(v) for v in pivot)
+        room_x, room_y = float(self.width) - px, float(self.height) - py
+        k_max = min(item.quantity, max_by_weight, math.floor((float(self.depth) - pz) / t + 1e-9))
+        if k_max < 1:
+            return False
+        total = length + width
+        candidatos = []
+        for a in (min(room_x, length), total - min(room_y, length), total / 2):
+            a = math.floor(a * 10) / 10
+            b = total - a
+            if a >= width + 1 and b >= width + 1 and a <= room_x + 1e-9 and b <= room_y + 1e-9:
+                candidatos.append((a, b))
+        for a, b in dict.fromkeys(candidatos):
+            for corner in ('BL', 'BR', 'TL', 'TR'):
+                ay = 0 if corner in ('BL', 'BR') else b - width
+                bx = 0 if corner in ('BL', 'TL') else a - width
+                by = width if corner in ('BL', 'BR') else 0
+                arms = [('A', px, py + ay, a, width), ('B', px + bx, py + by, width, b - width)]
+                k = k_max
+                while k >= 1:
+                    height = ceil2Decimal(t * k, nd)
+                    blocks = []
+                    for part, x, y, w, h in arms:
+                        blk = copy.copy(item)
+                        blk.rotation_type = RotationType.RT_WHD
+                        blk.setShape(0, k)
+                        blk.width, blk.height, blk.depth = ceil2Decimal(w, nd), ceil2Decimal(h, nd), height
+                        blk.position = [set2Decimal(x, nd), set2Decimal(y, nd), set2Decimal(pz, nd)]
+                        blk.bend, blk.layers = part, k
+                        if part == 'B':
+                            blk.quantity = 0
+                            blk.weight = set2Decimal(0, nd)
+                        blocks.append(blk)
+                    if not all(self._inside(blk.position, blk.getDimension()) for blk in blocks):
+                        k = 0
+                        break
+                    if self.getTotalWeight() + blocks[0].weight > self.max_weight:
+                        k -= 1
+                        continue
+                    blockers = [o for blk in blocks for o in self.items if intersect(o, blk)]
+                    if not blockers:
+                        break
+                    z_block = min(float(o.position[2]) for o in blockers)
+                    if z_block <= pz + 1e-9:
+                        k = 0
+                        break
+                    k = min(k - 1, math.floor((z_block - pz) / t + 1e-9))
+                if k < 1:
+                    continue
+                if self.fix_point and self.check_stable and not all(
+                        self._supported(float(blk.position[0]), float(blk.position[1]), pz,
+                                        float(blk.width), float(blk.height)) for blk in blocks):
+                    continue
+                # arm B first: the caller reads the placed quantity from self.items[-1] (arm A)
+                for blk in reversed(blocks):
+                    self._commit(blk, blk.getDimension())
+                return True
         return False
+
+
+    def _supported(self, x, y, z, w, h):
+        '''
+        stability rule:
+        1. Define a support ratio, if the ratio below the support surface does not exceed this ratio, compare the second rule.
+        2. If there is no support under any vertices of the bottom of the item, then fit = False.
+        '''
+        # Cal the surface area of the item.
+        item_area_lower = w * h
+        # Cal the surface area of the underlying support.
+        support_area_upper = 0
+        for s in self.fit_items:
+            # Verify that the lower support surface area is greater than the upper support surface area * support_surface_ratio.
+            if abs(z - s[5]) < 1e-6 :
+                support_area_upper += overlap(x, x+w, s[0], s[1]) * overlap(y, y+h, s[2], s[3])
+
+        # If not , get four vertices of the bottom of the item.
+        if item_area_lower > 0 and support_area_upper / item_area_lower < self.support_surface_ratio :
+            four_vertices = [[x,y],[x+w,y],[x,y+h],[x+w,y+h]]
+            #  If any vertices is not supported, fit = False.
+            c = [False,False,False,False]
+            for s in self.fit_items:
+                if abs(z - s[5]) < 1e-6 :
+                    for jdx,j in enumerate(four_vertices) :
+                        if (s[0] <= j[0] <= s[1]) and (s[2] <= j[1] <= s[3]) :
+                            c[jdx] = True
+            if False in c :
+                return False
+        return True
 
 
     def _settle(self, item, pivot, dimension):
@@ -390,31 +499,8 @@ class Bin:
             z = self.checkDepth([x,x+float(w),y,y+float(h),z,z+float(d)])
 
         # check stability on item
-        # rule :
-        # 1. Define a support ratio, if the ratio below the support surface does not exceed this ratio, compare the second rule.
-        # 2. If there is no support under any vertices of the bottom of the item, then fit = False.
-        if self.check_stable == True :
-            # Cal the surface area of the item.
-            item_area_lower = float(w) * float(h)
-            # Cal the surface area of the underlying support.
-            support_area_upper = 0
-            for s in self.fit_items:
-                # Verify that the lower support surface area is greater than the upper support surface area * support_surface_ratio.
-                if z == s[5]  :
-                    support_area_upper += overlap(x, x+float(w), s[0], s[1]) * overlap(y, y+float(h), s[2], s[3])
-
-            # If not , get four vertices of the bottom of the item.
-            if item_area_lower > 0 and support_area_upper / item_area_lower < self.support_surface_ratio :
-                four_vertices = [[x,y],[x+float(w),y],[x,y+float(h)],[x+float(w),y+float(h)]]
-                #  If any vertices is not supported, fit = False.
-                c = [False,False,False,False]
-                for s in self.fit_items:
-                    if z == s[5] :
-                        for jdx,j in enumerate(four_vertices) :
-                            if (s[0] <= j[0] <= s[1]) and (s[2] <= j[1] <= s[3]) :
-                                c[jdx] = True
-                if False in c :
-                    return None
+        if self.check_stable == True and not self._supported(x, y, z, float(w), float(h)):
+            return None
 
         nd = self.number_of_decimals
         item.position = [set2Decimal(x, nd),set2Decimal(y, nd),set2Decimal(z, nd)]

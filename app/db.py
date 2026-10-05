@@ -53,6 +53,7 @@ def conectar():
 MIGRACOES = [
     ("produtos", "orientacao_livre", "INTEGER NOT NULL DEFAULT 1"),
     ("embalagens", "forma", "TEXT NOT NULL DEFAULT 'retangular'"),
+    ("produtos", "curvavel", "INTEGER NOT NULL DEFAULT 1"),
 ]
 
 

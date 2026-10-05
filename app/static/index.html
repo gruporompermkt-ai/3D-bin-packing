@@ -83,9 +83,10 @@
       <label>Compressão<input id="p-compressao" type="number" step="0.01" min="0.01" max="1" value="1"></label>
       <label>Tipo<select id="p-empilhavel"><option value="1">Vestuário (empilha)</option><option value="0">Rígido</option></select></label>
       <label>Orientação<select id="p-orientacao_livre"><option value="1">Livre (deitada ou em pé)</option><option value="0">Só deitada</option></select></label>
+      <label>Curvar em L<select id="p-curvavel"><option value="1">Pode (ocupa cantos)</option><option value="0">Não</option></select></label>
       <button class="p" id="p-salvar">Salvar</button>
     </div>
-    <p class="hint">Compressão de 0 a 1: 1 = não comprime; 0,95 = a espessura cai para 95% na pilha. Cada dobra corta o comprimento ou a largura ao meio e dobra a espessura.</p>
+    <p class="hint">Compressão de 0 a 1: 1 = não comprime; 0,95 = a espessura cai para 95% na pilha. Cada dobra corta o comprimento ou a largura ao meio e dobra a espessura. Curvar em L: quando a peça reta não cabe num vão, ela é curvada a 90° (os dois braços somam o comprimento) para ocupar um canto.</p>
     <div class="msg" id="p-msg"></div>
   </div>
 
@@ -103,7 +104,7 @@
       <label>Código<input id="e-codigo" size="8"></label>
       <label>Descrição<input id="e-descricao" size="18"></label>
       <label>Tipo<select id="e-tipo"><option>caixa</option><option>fardo</option></select></label>
-      <label>Forma (fardo)<select id="e-forma"><option value="retangular">retangular</option><option value="cilindrico">cilíndrico</option></select></label>
+      <label>Forma (fardo)<select id="e-forma"><option value="flexivel">flexível (escolhe a melhor)</option><option value="retangular">retangular</option><option value="cilindrico">cilíndrico</option></select></label>
       <label>Comprimento cm (interno)<input id="e-comprimento" type="number" step="0.1" min="0"></label>
       <label>Largura cm<input id="e-largura" type="number" step="0.1" min="0"></label>
       <label>Altura cm (fardo: máxima)<input id="e-altura" type="number" step="0.1" min="0"></label>
@@ -113,7 +114,7 @@
       <label>Ativa<select id="e-ativo"><option value="1">sim</option><option value="0">não</option></select></label>
       <button class="p" id="e-salvar">Salvar</button>
     </div>
-    <p class="hint">Caixa: medidas internas, altura fixa. Fardo retangular: comprimento × largura da base e a altura máxima; a altura final vem do conteúdo. Fardo cilíndrico (flexível): comprimento = diâmetro máximo (largura é ignorada); diâmetro e altura finais vêm do conteúdo e o peso cubado usa o "caixote" Ø × Ø × altura. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
+    <p class="hint">Caixa: medidas internas, fixas. Fardo: paredes flexíveis — informe as medidas MÁXIMAS; as medidas finais são as do conteúdo. Forma flexível testa o bloco retangular e o cilindro (diâmetro até o menor lado da base) e fica com o mais compacto. No cilindro o peso cubado usa o "caixote" Ø × Ø × altura. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
     <div class="msg" id="e-msg"></div>
   </div>
   <div class="card"><h2>Embalagens</h2><div class="tbl"><table id="e-tabela"></table></div></div>
@@ -183,15 +184,15 @@ async function carregarProdutos() {
   produtos = await api('GET', '/api/produtos');
   const f = $('#p-filtro').value.trim().toUpperCase();
   const rows = produtos.filter(p => !f || p.codigo.includes(f));
-  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th>Orientação</th><th></th></tr>' +
+  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th>Orientação</th><th>Curva L</th><th></th></tr>' +
     rows.map((p, i) => `<tr><td>${esc(p.codigo)}</td><td>${esc(p.tamanho)}</td><td>${esc(p.descricao)}</td>
       <td class="n">${fmt(p.comprimento)}</td><td class="n">${fmt(p.largura)}</td><td class="n">${fmt(p.espessura)}</td>
       <td class="n">${fmt(p.peso_g)}</td><td class="n">${p.dobras}</td><td class="n">${fmt(p.compressao)}</td>
-      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td><td>${p.empilhavel ? (p.orientacao_livre ? 'livre' : 'só deitada') : ''}</td>
+      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td><td>${p.empilhavel ? (p.orientacao_livre ? 'livre' : 'só deitada') : ''}</td><td>${p.empilhavel ? (p.curvavel ? 'sim' : 'não') : ''}</td>
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#p-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
     const p = rows[b.dataset.edit];
-    $('#p-codigo').value = p.codigo; $('#p-tamanho').value = p.tamanho; $('#p-empilhavel').value = p.empilhavel ? '1' : '0'; $('#p-orientacao_livre').value = p.orientacao_livre ? '1' : '0';
+    $('#p-codigo').value = p.codigo; $('#p-tamanho').value = p.tamanho; $('#p-empilhavel').value = p.empilhavel ? '1' : '0'; $('#p-orientacao_livre').value = p.orientacao_livre ? '1' : '0'; $('#p-curvavel').value = p.curvavel ? '1' : '0';
     P_FIELDS.forEach(k => $('#p-' + k).value = p[k]); window.scrollTo(0, 0);
   });
   $('#p-tabela').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
@@ -204,7 +205,7 @@ $('#p-filtro').oninput = carregarProdutos;
 $('#p-salvar').onclick = async () => {
   const cod = $('#p-codigo').value.trim(), tam = $('#p-tamanho').value.trim();
   if (!cod || !tam) return msg('#p-msg', 'Informe código e tamanho');
-  const body = {empilhavel: $('#p-empilhavel').value === '1', orientacao_livre: $('#p-orientacao_livre').value === '1'};
+  const body = {empilhavel: $('#p-empilhavel').value === '1', orientacao_livre: $('#p-orientacao_livre').value === '1', curvavel: $('#p-curvavel').value === '1'};
   P_FIELDS.forEach(k => body[k] = k === 'descricao' ? $('#p-' + k).value : num($('#p-' + k).value));
   try { await api('PUT', `/api/produtos/${encodeURIComponent(cod)}/${encodeURIComponent(tam)}`, body); msg('#p-msg', `Salvo ${cod.toUpperCase()}/${tam.toUpperCase()}`, true); carregarProdutos(); }
   catch (e) { msg('#p-msg', e.message); }
@@ -221,8 +222,8 @@ const E_FIELDS = ['descricao','tipo','forma','comprimento','largura','altura','p
 async function carregarEmbalagens() {
   const rows = await api('GET', '/api/embalagens');
   $('#e-tabela').innerHTML = '<tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="n">C×L×A cm</th><th class="n">Peso máx. g</th><th class="n">Tara g</th><th class="n">Custo</th><th>Ativa</th><th></th></tr>' +
-    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}${e.tipo === 'fardo' ? ' ' + esc(e.forma) : ''}</td>
-      <td class="n">${e.forma === 'cilindrico' && e.tipo === 'fardo' ? `Ø ${fmt(e.comprimento,1)} × ${fmt(e.altura,1)}` : `${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}`}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
+    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}${e.tipo === 'fardo' ? ' ' + esc({flexivel: 'flexível', retangular: 'retangular', cilindrico: 'cilíndrico'}[e.forma] || e.forma) : ''}</td>
+      <td class="n">${e.tipo === 'fardo' ? 'até ' : ''}${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
       <td class="n">${fmt(e.tara_g,0)}</td><td class="n">${fmt(e.custo)}</td><td>${e.ativo ? 'sim' : 'não'}</td>
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#e-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
@@ -248,8 +249,7 @@ $('#e-salvar').onclick = async () => {
 function dimTxt(v) {
   const [c, l, a] = v.dimensoes_cm;
   let t = v.forma === 'cilindrico' ? `Ø ${fmt(c,0)} × ${fmt(a,0)} cm` : `${fmt(c,1)} × ${fmt(l,1)} × ${fmt(a,1)} cm`;
-  if (v.forma === 'cilindrico') t += `, máx. Ø ${fmt(v.diametro_max_cm,0)} × ${fmt(v.altura_max_cm,0)}`;
-  else if (v.altura_max_cm) t += `, altura máx. ${fmt(v.altura_max_cm,0)}`;
+  if (v.max_cm) t += `, máx. ${v.max_cm.map(x => fmt(x,0)).join(' × ')}`;
   return t;
 }
 $('#c-calc').onclick = async () => {
@@ -353,7 +353,7 @@ const viewer = (() => {
       const grupo = new THREE.Group();
       // cada peça da pilha, cortada no eixo em que a pilha cresce (z = deitada; x/y = em pé),
       // com uma folga mínima para enxergar as camadas
-      const n = Math.max(1, b.qtd), eixo = b.eixo || 'z';
+      const n = Math.max(1, b.camadas || b.qtd), eixo = b.eixo || 'z';
       const tam = {x: b.c, y: b.l, z: b.a}, esp = tam[eixo] / n, folga = Math.min(.15, esp * .2);
       for (let k = 0; k < n; k++) {
         const d = {x: b.c - .2, y: b.l - .2, z: b.a - .2};
@@ -389,7 +389,8 @@ const viewer = (() => {
     });
     if (n === 0) { $('#v-passo').textContent = `Embalagem vazia · ${pilhas.length} pilhas para montar`; return; }
     const b = vol.layout[n - 1];
-    $('#v-passo').innerHTML = `<b>Passo ${n}/${pilhas.length}:</b> ${esc(b.sku)} × ${b.qtd} (${esc(b.forma)}) · base ${fmt(b.c,1)} × ${fmt(b.l,1)} cm, altura ${fmt(b.a,1)} cm · posição ${fmt(b.x,1)} / ${fmt(b.y,1)} / ${fmt(b.z,1)} cm`;
+    const qtdTxt = b.parte_l === 'B' ? `${b.camadas}, 2º braço do L` : b.qtd;
+    $('#v-passo').innerHTML = `<b>Passo ${n}/${pilhas.length}:</b> ${esc(b.sku)} × ${qtdTxt} (${esc(b.forma)}) · base ${fmt(b.c,1)} × ${fmt(b.l,1)} cm, altura ${fmt(b.a,1)} cm · posição ${fmt(b.x,1)} / ${fmt(b.y,1)} / ${fmt(b.z,1)} cm`;
   }
   function parar() { if (timer) { clearInterval(timer); timer = null; $('#v-play').textContent = '▶ montar'; } }
   $('#v-slider').oninput = e => { parar(); passo(Number(e.target.value)); };

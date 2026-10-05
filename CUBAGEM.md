@@ -20,6 +20,7 @@ Endereço: **http://192.168.0.95:8086/** (API em `/api/...`, documentação auto
 | compressão | 0 a 1. **1 = incomprimível**; 0,95 = dentro da pilha a espessura cai para 95%. Só a espessura comprime |
 | tipo | *vestuário* (empilha) ou *rígido* (gira em qualquer eixo, um a um) |
 | orientação | vestuário: *livre* (deitada ou em pé, de lado, em qualquer direção) ou *só deitada* |
+| curvar em L | vestuário: pode ser curvado a 90° para ocupar um canto (ver abaixo) |
 
 Peças iguais viram **pilhas**: deitadas (a pilha cresce para cima) ou, com orientação livre, em pé
 (as peças ficam lado a lado, como fichas num arquivo, e a pilha cresce para o lado). Tamanho da pilha
@@ -46,23 +47,34 @@ volume e depois o menor volume cobrado. O padrão é 8 iterações; na tela dá 
 denso, mais lento). A estratégia vencedora aparece em cada volume.
 
 Exemplo real (fardo 002, 30 × 40, F2505/38 ×10 + F1078/P ×15 + F1078/PP ×10):
-só deitada, 1 tentativa = 76 cm (47,5%); orientação livre + 8 iterações = **47 cm (77%)**, peso
-cubado de 27,4 para 16,9 kg.
+só deitada, base fixa, 1 tentativa = 30 × 40 × 76 cm (47,5%, 27,4 kg cubados); orientação livre,
+8 iterações e paredes flexíveis = **29 × 38 × 47 cm (83,7%, 15,5 kg cubados)**.
 
-## Fardo
+## Fardo (paredes flexíveis)
 
-Cadastre a embalagem com tipo **fardo** e escolha a forma:
+O fardo não tem caixa rígida: as paredes se ajustam ao conteúdo. No cadastro informe as medidas
+**máximas** (comprimento × largura × altura); as medidas finais de cada fardo são as do próprio
+conteúdo (arredondadas para cima em cm inteiro) e são elas que entram no volume, no peso cubado e na
+tela. Forma:
 
-- **retangular**: comprimento × largura são a base e a altura é a **máxima**;
-- **cilíndrico (flexível)**: comprimento = **diâmetro máximo** (a largura é ignorada) e a altura máxima.
-  As peças precisam caber dentro do círculo. O diâmetro final é o menor círculo, centrado, que envolve o
-  conteúdo, e a altura final é o topo do conteúdo. O peso cubado usa o "caixote" Ø × Ø × altura, que é
-  como as transportadoras costumam cobrar cilindros; a ocupação usa o volume real do cilindro.
+- **flexível** (padrão): testa o bloco retangular e o cilindro (diâmetro até o menor lado da base)
+  e fica com o que der o menor volume cobrado;
+- **retangular**: só o bloco;
+- **cilíndrico**: só o cilindro; o peso cubado usa o "caixote" Ø × Ø × altura (como as
+  transportadoras costumam cobrar), a ocupação usa o volume real do cilindro.
 
-Os fardos cheios vão até a altura máxima ou até o peso máximo. No último fardo, que fica parcial,
-o sistema procura o fardo mais compacto em que todo o conteúdo ainda cabe: a menor altura e, no
-cilíndrico, também diâmetros menores (100%, 85%, 70% e 55% do máximo). As medidas finais,
-arredondadas para cima em cm inteiro, entram no volume, no peso cubado e na tela.
+Os fardos cheios vão até as medidas máximas ou até o peso máximo. No último fardo, que fica parcial,
+o sistema procura o fardo mais compacto em que tudo ainda cabe: bases menores (100%, 80% e 60% de
+cada lado; no cilindro 100%, 85%, 70% e 55% do diâmetro) e, para cada uma, a menor altura. Bases
+que não têm como vencer o melhor resultado já encontrado são descartadas sem montar.
+
+## Peça curvada em L
+
+Vestuário marcado como **Curvar em L** (padrão: sim) pode ser curvado a 90°, deitado, para ocupar um
+canto: quando nenhuma forma reta (aberta, dobrada, deitada ou em pé) cabe num vão, a peça vira um L
+com braços `a` e `b`, em que `a + b = comprimento + largura` (a área da peça é mantida). As quatro
+posições do canto são testadas. Na tela a forma aparece como "curvada em L" e o 3D mostra os dois
+braços. Uma peça em arco (acompanhando uma parede curva) é aproximada por esse L.
 
 ## Simulação 3D
 

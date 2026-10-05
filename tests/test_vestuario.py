@@ -161,20 +161,23 @@ def test_layout_para_visualizacao():
 FARDO = Embalagem("FD", 70, 50, 60, 30000, tara_g=150, tipo="fardo")
 
 
-def test_fardo_altura_acompanha_conteudo():
+def test_fardo_acompanha_conteudo():
     r = cartonize([(F2505_38, 20)], [FARDO], fator_cubagem=300)
     v = r["volumes"][0]
     assert r["totais"]["volumes"] == 1 and r["totais"]["pecas"] == 20
-    # base 70x50 comporta 2x2 colunas: 20 peças = 4 colunas de 5 -> 5 x 2,09 = 10,45 -> 11 cm
-    assert v["dimensoes_cm"] == [70, 50, 11]
-    assert v["altura_max_cm"] == 60
-    assert v["peso_cubado_kg"] == pytest.approx(70 * 50 * 11 / 1e6 * 300)
-    assert max(b["z"] + b["a"] for b in v["layout"]) <= 11
+    c, l, a = v["dimensoes_cm"]
+    # base 70x50 comporta 2x2 colunas de 5 -> 70 x 50 x 11 cm; com paredes flexíveis o fardo
+    # fica do tamanho do conteúdo e não pode ser maior que isso
+    assert c * l * a <= 70 * 50 * 11
+    assert c <= 70 and l <= 50 and a <= 60
+    assert v["max_cm"] == [70, 50, 60]
+    assert v["peso_cubado_kg"] == pytest.approx(c * l * a / 1e6 * 300, abs=0.001)
+    layout_valido(v["layout"], (c, l, a))
 
 
-def test_fardo_mais_conteudo_fica_mais_alto():
-    alturas = [cartonize([(F2505_38, q)], [FARDO])["volumes"][0]["dimensoes_cm"][2] for q in (8, 40, 80)]
-    assert alturas == sorted(alturas) and alturas[0] < alturas[-1]
+def test_fardo_mais_conteudo_fica_maior():
+    volumes = [cartonize([(F2505_38, q)], [FARDO])["volumes"][0]["volume_m3"] for q in (8, 40, 80)]
+    assert volumes == sorted(volumes) and volumes[0] < volumes[-1]
 
 
 def test_fardo_respeita_altura_maxima_e_abre_outro():
@@ -231,8 +234,8 @@ def test_iteracoes_nao_pioram():
     pedido = [(F2505_38, 30), (Produto("F1078", "P", 30, 25, 3, 300, 0, 0.9), 15),
               (Produto("F1078", "PP", 15, 15, 4.2, 200, 0, 0.9), 10)]
     emb = Embalagem("002", 30, 40, 150, 30000, tipo="fardo")
-    alturas = [cartonize(pedido, [emb], iteracoes=n)["volumes"][0]["dimensoes_cm"][2] for n in (1, 8)]
-    assert alturas[1] <= alturas[0]
+    volumes = [cartonize(pedido, [emb], iteracoes=n)["volumes"][0]["volume_m3"] for n in (1, 8)]
+    assert volumes[1] <= volumes[0]
 
 
 def test_fardo_cilindrico_flexivel():
@@ -254,3 +257,40 @@ def test_cilindro_nao_aceita_canto_fora_do_circulo():
     assert b._inside([0, 0, 0], [10, 10, 1]) is False          # canto (0,0) está fora do círculo
     assert b._inside([10, 10, 0], [20, 20, 1]) is True
     assert len(b.seedPivots()) > 0
+
+
+# ---------------------------------------------------------------- peça curvada em L, fardo flexível
+def calca(qtd, curvavel=True):
+    return Item("CALCA", "CALCA", "cube", (50, 10, 1), 300, 2, 100, False, "blue",
+                compress_ratio=0.9, quantity=qtd, bendable=curvavel)
+
+
+def test_peca_curvada_em_l_ocupa_o_canto():
+    # 50 cm não cabe reto numa caixa 40 x 40 (nem girada); curvada em L: braços 40 + 20 (a + b = 50 + 10)
+    _, b = empacota((40, 40, 10), calca(5, curvavel=False))
+    assert pecas(b) == 0
+    _, b = empacota((40, 40, 10), calca(5))
+    assert pecas(b) == 5
+    partes = sorted(i.bend for i in b.items)
+    assert partes == ["A", "B"]                                    # um L = dois blocos
+    a_, b_ = sorted(b.items, key=lambda i: i.bend)
+    assert a_.quantity == 5 and b_.quantity == 0 and b_.layers == 5
+    assert float(b_.weight) == 0 and float(a_.weight) == pytest.approx(5 * 300)
+    # área preservada: braço A (a x 10) + braço B (10 x (b - 10)) = 50 x 10
+    area = float(a_.width * a_.height + b_.width * b_.height)
+    assert area == pytest.approx(500, abs=2)
+    sem_sobreposicao(b)
+
+
+def test_l_so_quando_reto_nao_cabe():
+    _, b = empacota((60, 40, 10), calca(5))
+    assert pecas(b) == 5 and all(i.bend is None for i in b.items)
+
+
+def test_fardo_flexivel_escolhe_formato():
+    fd = Embalagem("FX", 60, 60, 100, 30000, tipo="fardo")                    # forma padrão: flexível
+    r = cartonize([(F2505_38, 30)], [fd], iteracoes=3)
+    v = r["volumes"][0]
+    assert v["forma"] in ("retangular", "cilindrico")
+    so_ret = cartonize([(F2505_38, 30)], [Embalagem("R", 60, 60, 100, 30000, tipo="fardo", forma="retangular")], iteracoes=3)
+    assert v["volume_m3"] <= so_ret["volumes"][0]["volume_m3"] + 1e-9

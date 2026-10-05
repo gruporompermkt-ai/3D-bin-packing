@@ -39,12 +39,13 @@ class ProdutoIn(BaseModel):
     compressao: float = Field(1.0, gt=0, le=1)
     empilhavel: bool = True
     orientacao_livre: bool = True
+    curvavel: bool = True
 
 
 class EmbalagemIn(BaseModel):
     descricao: str = ""
     tipo: Literal["caixa", "fardo"] = "caixa"
-    forma: Literal["retangular", "cilindrico"] = "retangular"
+    forma: Literal["flexivel", "retangular", "cilindrico"] = "flexivel"
     comprimento: float = Field(gt=0, description="cm, interno")
     largura: Optional[float] = Field(None, gt=0, description="cm; ignorada no fardo cilíndrico")
     altura: float = Field(gt=0)
@@ -93,14 +94,15 @@ def salvar_produto(codigo: str, tamanho: str, p: ProdutoIn):
     with db.conectar() as con:
         con.execute(
             """INSERT INTO produtos (codigo, tamanho, descricao, comprimento, largura, espessura, peso_g, dobras, compressao,
-                                   empilhavel, orientacao_livre)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                                   empilhavel, orientacao_livre, curvavel)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(codigo, tamanho) DO UPDATE SET descricao=excluded.descricao, comprimento=excluded.comprimento,
                  largura=excluded.largura, espessura=excluded.espessura, peso_g=excluded.peso_g, dobras=excluded.dobras,
                  compressao=excluded.compressao, empilhavel=excluded.empilhavel, orientacao_livre=excluded.orientacao_livre,
+                 curvavel=excluded.curvavel,
                  atualizado_em=datetime('now','localtime')""",
             (_norm(codigo), tamanho.strip().upper(), p.descricao, p.comprimento, p.largura, p.espessura, p.peso_g,
-             p.dobras, p.compressao, int(p.empilhavel), int(p.orientacao_livre)))
+             p.dobras, p.compressao, int(p.empilhavel), int(p.orientacao_livre), int(p.curvavel)))
     return {"ok": True}
 
 
@@ -168,7 +170,7 @@ def salvar_embalagem(codigo: str, e: EmbalagemIn):
     if e.tara_g >= e.peso_max_g:
         raise HTTPException(422, "a tara deve ser menor que o peso máximo")
     forma = e.forma if e.tipo == "fardo" else "retangular"
-    largura = e.comprimento if forma == "cilindrico" else e.largura   # cilindro: comprimento = diâmetro
+    largura = e.largura if e.largura is not None or forma != "cilindrico" else e.comprimento  # cilindro sem largura: diâmetro = comprimento
     if largura is None:
         raise HTTPException(422, "informe a largura")
     with db.conectar() as con:
@@ -205,7 +207,8 @@ def calcular(pedido: PedidoIn):
                 faltando.append(f"{_norm(it.codigo)}/{it.tamanho.strip().upper()}")
                 continue
             linhas.append((Produto(r["codigo"], r["tamanho"], r["comprimento"], r["largura"], r["espessura"], r["peso_g"],
-                                   r["dobras"], r["compressao"], bool(r["empilhavel"]), bool(r["orientacao_livre"])),
+                                   r["dobras"], r["compressao"], bool(r["empilhavel"]), bool(r["orientacao_livre"]),
+                                   bool(r["curvavel"])),
                            it.quantidade))
         if faltando:
             raise HTTPException(422, {"mensagem": "produtos sem cadastro", "produtos": faltando})
