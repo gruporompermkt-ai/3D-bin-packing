@@ -50,7 +50,7 @@ def mkResultAPI():
     '''
     res = {"Success": False}
     if flask.request.method == "POST":
-        q= eval(flask.request.data.decode('utf-8'))
+        q= json.loads(flask.request.data.decode('utf-8'))
         if 'box' in q.keys() and 'item' in q.keys() and 'binding' in q.keys():
             try :
                 packer,box,binding = getBoxAndItem(q)

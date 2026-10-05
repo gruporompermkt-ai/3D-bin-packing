@@ -1,0 +1,9 @@
+.git
+venv
+data
+img
+reference
+noused
+**/__pycache__
+*.json
+!tests/baseline/original.json

@@ -1,0 +1,2566 @@
+{
+ "example0": {
+  "bins": [
+   {
+    "partno": "example0",
+    "items": [
+     {
+      "partno": "corner0",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner1",
+      "position": [
+       0.0,
+       0.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner2",
+      "position": [
+       0.0,
+       229.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner3",
+      "position": [
+       0.0,
+       229.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner4",
+      "position": [
+       575.0,
+       229.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner5",
+      "position": [
+       575.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner6",
+      "position": [
+       575.0,
+       0.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner7",
+      "position": [
+       575.0,
+       229.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "Cabinet1",
+      "position": [
+       15.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet2",
+      "position": [
+       75.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet3",
+      "position": [
+       135.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet4",
+      "position": [
+       195.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet5",
+      "position": [
+       255.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal1",
+      "position": [
+       315.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal2",
+      "position": [
+       485.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       82.0,
+       170.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal3",
+      "position": [
+       15.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal4",
+      "position": [
+       315.0,
+       82.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal5",
+      "position": [
+       485.0,
+       170.0,
+       0.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       82.0,
+       46.0,
+       170.0
+      ]
+     },
+     {
+      "partno": "wash1",
+      "position": [
+       185.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash2",
+      "position": [
+       15.0,
+       162.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash3",
+      "position": [
+       100.0,
+       162.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash4",
+      "position": [
+       185.0,
+       162.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash5",
+      "position": [
+       315.0,
+       164.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash6",
+      "position": [
+       400.0,
+       164.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash7",
+      "position": [
+       315.0,
+       0.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash8",
+      "position": [
+       400.0,
+       0.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash9",
+      "position": [
+       485.0,
+       0.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash10",
+      "position": [
+       315.0,
+       60.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "Server1",
+      "position": [
+       400.0,
+       60.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server2",
+      "position": [
+       470.0,
+       60.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server3",
+      "position": [
+       540.0,
+       60.0,
+       46.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       30.0,
+       100.0,
+       70.0
+      ]
+     },
+     {
+      "partno": "Server4",
+      "position": [
+       15.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server5",
+      "position": [
+       85.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server6",
+      "position": [
+       155.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server7",
+      "position": [
+       225.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server8",
+      "position": [
+       295.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server9",
+      "position": [
+       365.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server10",
+      "position": [
+       435.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       70.0,
+       100.0,
+       30.0
+      ]
+     }
+    ],
+    "unfitted": [],
+    "gravity": [
+     45.04,
+     27.27,
+     10.52,
+     17.17
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.18
+ },
+ "example1": {
+  "bins": [
+   {
+    "partno": "example1",
+    "items": [
+     {
+      "partno": "250g [powder 8]",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       4.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "250g [powder 9]",
+      "position": [
+       0.0,
+       4.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       4.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "250g [powder 10]",
+      "position": [
+       0.0,
+       8.0,
+       0.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       4.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "250g [powder 11]",
+      "position": [
+       0.0,
+       0.0,
+       2.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       4.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "250g [powder 12]",
+      "position": [
+       0.0,
+       4.0,
+       2.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       4.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "250g [powder 13]",
+      "position": [
+       0.0,
+       0.0,
+       4.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       4.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 1]",
+      "position": [
+       0.0,
+       2.0,
+       4.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 2]",
+      "position": [
+       2.0,
+       2.0,
+       4.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 3]",
+      "position": [
+       0.0,
+       4.0,
+       4.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 4]",
+      "position": [
+       2.0,
+       4.0,
+       4.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 5]",
+      "position": [
+       0.0,
+       6.0,
+       4.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 6]",
+      "position": [
+       2.0,
+       6.0,
+       4.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "50g [powder 7]",
+      "position": [
+       4.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       5.0
+      ]
+     }
+    ],
+    "unfitted": [],
+    "gravity": [
+     62.28,
+     5.26,
+     32.46,
+     0.0
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.07
+ },
+ "example2": {
+  "bins": [
+   {
+    "partno": "example2",
+    "items": [
+     {
+      "partno": "test1",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       9.0,
+       8.0,
+       7.0
+      ]
+     },
+     {
+      "partno": "test3",
+      "position": [
+       0.0,
+       8.0,
+       0.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       13.0,
+       2.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test7",
+      "position": [
+       0.0,
+       8.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       2.0,
+       9.0
+      ]
+     },
+     {
+      "partno": "test16",
+      "position": [
+       0.0,
+       0.0,
+       7.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       7.0,
+       8.0
+      ]
+     },
+     {
+      "partno": "test5",
+      "position": [
+       5.0,
+       0.0,
+       7.0
+      ],
+      "rotation_type": 4,
+      "dimension": [
+       2.0,
+       10.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test21",
+      "position": [
+       5.0,
+       0.0,
+       12.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       11.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "test12",
+      "position": [
+       5.0,
+       0.0,
+       12.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       9.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "test23",
+      "position": [
+       7.0,
+       0.0,
+       7.0
+      ],
+      "rotation_type": 4,
+      "dimension": [
+       2.0,
+       10.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test8",
+      "position": [
+       9.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       10.0,
+       8.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test10",
+      "position": [
+       9.0,
+       0.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       8.0,
+       4.0,
+       7.0
+      ]
+     },
+     {
+      "partno": "test4",
+      "position": [
+       9.0,
+       4.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       7.0,
+       5.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "test27",
+      "position": [
+       9.0,
+       4.0,
+       9.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       7.0,
+       2.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test6",
+      "position": [
+       9.0,
+       6.0,
+       9.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       5.0,
+       2.0,
+       6.0
+      ]
+     },
+     {
+      "partno": "test11",
+      "position": [
+       13.0,
+       8.0,
+       0.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       5.0,
+       2.0,
+       3.0
+      ]
+     },
+     {
+      "partno": "test20",
+      "position": [
+       16.0,
+       5.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       7.0,
+       4.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test29",
+      "position": [
+       17.0,
+       0.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       4.0,
+       5.0,
+       10.0
+      ]
+     },
+     {
+      "partno": "test14",
+      "position": [
+       18.0,
+       9.0,
+       0.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       1.0,
+       10.0
+      ]
+     },
+     {
+      "partno": "test28",
+      "position": [
+       19.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       8.0,
+       9.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test19",
+      "position": [
+       21.0,
+       0.0,
+       5.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       3.0,
+       5.0,
+       8.0
+      ]
+     },
+     {
+      "partno": "test17",
+      "position": [
+       23.0,
+       5.0,
+       5.0
+      ],
+      "rotation_type": 4,
+      "dimension": [
+       3.0,
+       4.0,
+       8.0
+      ]
+     },
+     {
+      "partno": "test15",
+      "position": [
+       24.0,
+       0.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       3.0,
+       2.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "test9",
+      "position": [
+       24.0,
+       2.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       3.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "test22",
+      "position": [
+       25.0,
+       2.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       3.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "test30",
+      "position": [
+       27.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       2.0,
+       10.0,
+       10.0
+      ]
+     },
+     {
+      "partno": "test26",
+      "position": [
+       29.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       1.0,
+       8.0,
+       3.0
+      ]
+     }
+    ],
+    "unfitted": [
+     "test13",
+     "test24",
+     "test18",
+     "test2",
+     "test25"
+    ],
+    "gravity": [
+     30.7,
+     30.97,
+     24.1,
+     14.23
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.1
+ },
+ "example3": {
+  "bins": [
+   {
+    "partno": "example3",
+    "items": [
+     {
+      "partno": "Box-1",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       1.0,
+       3.0
+      ]
+     },
+     {
+      "partno": "Box-2",
+      "position": [
+       2.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       3.0,
+       1.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-3",
+      "position": [
+       2.0,
+       0.0,
+       2.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       2.0,
+       1.0,
+       3.0
+      ]
+     }
+    ],
+    "unfitted": [
+     "Box-4",
+     "Box-5"
+    ],
+    "gravity": [
+     88.89,
+     11.11,
+     0.0,
+     0.0
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.02
+ },
+ "example4": {
+  "bins": [
+   {
+    "partno": "example4",
+    "items": [
+     {
+      "partno": "corner0",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner1",
+      "position": [
+       0.0,
+       0.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner2",
+      "position": [
+       0.0,
+       229.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner3",
+      "position": [
+       0.0,
+       229.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner4",
+      "position": [
+       575.0,
+       229.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner5",
+      "position": [
+       575.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner6",
+      "position": [
+       575.0,
+       0.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "corner7",
+      "position": [
+       575.0,
+       229.0,
+       244.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       15.0,
+       15.0,
+       15.0
+      ]
+     },
+     {
+      "partno": "Cabinet1",
+      "position": [
+       15.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet2",
+      "position": [
+       75.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet3",
+      "position": [
+       135.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet4",
+      "position": [
+       195.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet5",
+      "position": [
+       255.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet6",
+      "position": [
+       315.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet7",
+      "position": [
+       375.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet8",
+      "position": [
+       435.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet9",
+      "position": [
+       495.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet10",
+      "position": [
+       0.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet11",
+      "position": [
+       60.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet12",
+      "position": [
+       120.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet13",
+      "position": [
+       180.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet14",
+      "position": [
+       240.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Cabinet15",
+      "position": [
+       300.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       60.0,
+       80.0,
+       200.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal1",
+      "position": [
+       360.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal2",
+      "position": [
+       530.0,
+       80.0,
+       0.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       46.0,
+       82.0,
+       170.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal3",
+      "position": [
+       15.0,
+       160.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal4",
+      "position": [
+       185.0,
+       160.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal5",
+      "position": [
+       355.0,
+       162.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal6",
+      "position": [
+       525.0,
+       162.0,
+       0.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       46.0,
+       82.0,
+       170.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal7",
+      "position": [
+       15.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal8",
+      "position": [
+       185.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal9",
+      "position": [
+       355.0,
+       0.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal10",
+      "position": [
+       0.0,
+       82.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal11",
+      "position": [
+       170.0,
+       82.0,
+       200.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal12",
+      "position": [
+       360.0,
+       80.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal13",
+      "position": [
+       0.0,
+       160.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal14",
+      "position": [
+       170.0,
+       160.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "Dyson DC34 Animal15",
+      "position": [
+       340.0,
+       162.0,
+       46.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       170.0,
+       82.0,
+       46.0
+      ]
+     },
+     {
+      "partno": "wash1",
+      "position": [
+       525.0,
+       80.0,
+       170.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       60.0,
+       85.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash2",
+      "position": [
+       0.0,
+       160.0,
+       92.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       60.0,
+       60.0,
+       85.0
+      ]
+     },
+     {
+      "partno": "wash3",
+      "position": [
+       60.0,
+       160.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash4",
+      "position": [
+       145.0,
+       160.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash5",
+      "position": [
+       230.0,
+       160.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash6",
+      "position": [
+       315.0,
+       160.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash7",
+      "position": [
+       360.0,
+       80.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash8",
+      "position": [
+       400.0,
+       140.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash9",
+      "position": [
+       445.0,
+       80.0,
+       92.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash10",
+      "position": [
+       60.0,
+       164.0,
+       152.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       60.0,
+       60.0,
+       85.0
+      ]
+     },
+     {
+      "partno": "wash11",
+      "position": [
+       120.0,
+       164.0,
+       152.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash12",
+      "position": [
+       205.0,
+       164.0,
+       152.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash13",
+      "position": [
+       290.0,
+       164.0,
+       152.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash14",
+      "position": [
+       360.0,
+       82.0,
+       152.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash15",
+      "position": [
+       375.0,
+       142.0,
+       152.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       85.0,
+       60.0,
+       60.0
+      ]
+     },
+     {
+      "partno": "wash16",
+      "position": [
+       445.0,
+       82.0,
+       152.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       60.0,
+       60.0,
+       85.0
+      ]
+     },
+     {
+      "partno": "Server1",
+      "position": [
+       120.0,
+       164.0,
+       212.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       100.0,
+       70.0,
+       30.0
+      ]
+     },
+     {
+      "partno": "Server2",
+      "position": [
+       220.0,
+       164.0,
+       212.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       100.0,
+       70.0,
+       30.0
+      ]
+     }
+    ],
+    "unfitted": [
+     "wash17",
+     "wash18",
+     "Server3",
+     "Server4",
+     "Server5",
+     "Server6",
+     "Server7",
+     "Server8",
+     "Server9",
+     "Server10",
+     "Server11",
+     "Server12",
+     "Server13",
+     "Server14",
+     "Server15",
+     "Server16",
+     "Server17",
+     "Server18",
+     "Server19",
+     "Server20",
+     "Server21",
+     "Server22",
+     "Server23",
+     "Server24",
+     "Server25",
+     "Server26",
+     "Server27",
+     "Server28",
+     "Server29",
+     "Server30",
+     "Server31",
+     "Server32",
+     "Server33",
+     "Server34",
+     "Server35",
+     "Server36",
+     "Server37",
+     "Server38",
+     "Server39",
+     "Server40",
+     "Server41",
+     "Server42"
+    ],
+    "gravity": [
+     32.49,
+     23.5,
+     26.3,
+     17.71
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 2.23
+ },
+ "example5": {
+  "bins": [
+   {
+    "partno": "example5",
+    "items": [
+     {
+      "partno": "Box-3",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       5.0,
+       2.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-3",
+      "position": [
+       0.0,
+       2.0,
+       0.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       3.0,
+       2.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-4",
+      "position": [
+       0.0,
+       0.0,
+       2.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       4.0,
+       1.0
+      ]
+     }
+    ],
+    "unfitted": [],
+    "gravity": [
+     51.67,
+     10.0,
+     35.0,
+     3.33
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.02
+ },
+ "example6": {
+  "bins": [
+   {
+    "partno": "example6",
+    "items": [
+     {
+      "partno": "Box-1",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       4.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-2",
+      "position": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "Box-3",
+      "position": [
+       1.0,
+       0.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       3.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-4",
+      "position": [
+       4.0,
+       0.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "Box-5",
+      "position": [
+       0.0,
+       1.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       2.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-6",
+      "position": [
+       4.0,
+       1.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       2.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-7",
+      "position": [
+       0.0,
+       3.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "Box-8",
+      "position": [
+       4.0,
+       3.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "Box-9",
+      "position": [
+       0.0,
+       0.0,
+       5.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       4.0,
+       2.0
+      ]
+     }
+    ],
+    "unfitted": [],
+    "gravity": [
+     37.78,
+     31.67,
+     16.3,
+     14.26
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.05
+ },
+ "example7": {
+  "bins": [
+   {
+    "partno": "example7-Bin1",
+    "items": [
+     {
+      "partno": "Box-18",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-1",
+      "position": [
+       0.0,
+       4.0,
+       0.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       4.0,
+       1.0,
+       5.0
+      ]
+     },
+     {
+      "partno": "Box-12",
+      "position": [
+       0.0,
+       0.0,
+       2.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       5.0,
+       4.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-2",
+      "position": [
+       0.0,
+       0.0,
+       3.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       4.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-6",
+      "position": [
+       2.0,
+       0.0,
+       3.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       4.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-9",
+      "position": [
+       4.0,
+       0.0,
+       3.0
+      ],
+      "rotation_type": 5,
+      "dimension": [
+       1.0,
+       4.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-3",
+      "position": [
+       0.0,
+       0.0,
+       4.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       3.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-5",
+      "position": [
+       2.0,
+       0.0,
+       4.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       3.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-13",
+      "position": [
+       4.0,
+       4.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "Box-16",
+      "position": [
+       0.0,
+       3.0,
+       4.0
+      ],
+      "rotation_type": 3,
+      "dimension": [
+       4.0,
+       1.0,
+       1.0
+      ]
+     }
+    ],
+    "unfitted": [
+     "Box-8",
+     "Box-10",
+     "Box-4",
+     "Box-7",
+     "Box-11",
+     "Box-17",
+     "Box-14",
+     "Box-15"
+    ],
+    "gravity": [
+     40.25,
+     22.25,
+     21.75,
+     15.75
+    ]
+   },
+   {
+    "partno": "example7-Bin2",
+    "items": [
+     {
+      "partno": "Box-3",
+      "position": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       3.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-5",
+      "position": [
+       2.0,
+       0.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       2.0,
+       3.0
+      ]
+     },
+     {
+      "partno": "Box-8",
+      "position": [
+       0.0,
+       0.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       2.0,
+       3.0
+      ]
+     },
+     {
+      "partno": "Box-10",
+      "position": [
+       1.0,
+       0.0,
+       1.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       2.0,
+       3.0
+      ]
+     },
+     {
+      "partno": "Box-4",
+      "position": [
+       0.0,
+       2.0,
+       1.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       2.0,
+       1.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-7",
+      "position": [
+       2.0,
+       0.0,
+       3.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       2.0,
+       2.0
+      ]
+     },
+     {
+      "partno": "Box-11",
+      "position": [
+       0.0,
+       0.0,
+       4.0
+      ],
+      "rotation_type": 2,
+      "dimension": [
+       2.0,
+       2.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-13",
+      "position": [
+       2.0,
+       2.0,
+       0.0
+      ],
+      "rotation_type": 0,
+      "dimension": [
+       1.0,
+       1.0,
+       4.0
+      ]
+     },
+     {
+      "partno": "Box-14",
+      "position": [
+       0.0,
+       2.0,
+       3.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       2.0,
+       1.0,
+       1.0
+      ]
+     },
+     {
+      "partno": "Box-15",
+      "position": [
+       0.0,
+       2.0,
+       4.0
+      ],
+      "rotation_type": 1,
+      "dimension": [
+       2.0,
+       1.0,
+       1.0
+      ]
+     }
+    ],
+    "unfitted": [
+     "Box-18",
+     "Box-1",
+     "Box-12",
+     "Box-2",
+     "Box-6",
+     "Box-9",
+     "Box-16",
+     "Box-17"
+    ],
+    "gravity": [
+     36.67,
+     20.0,
+     33.33,
+     10.0
+    ]
+   }
+  ],
+  "error": null,
+  "seconds": 0.09
+ }
+}

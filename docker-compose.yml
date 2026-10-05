@@ -1,0 +1,14 @@
+name: cubagem
+services:
+  cubagem:
+    image: cubagem:local
+    container_name: cubagem
+    build: .
+    restart: unless-stopped
+    environment:
+      FATOR_CUBAGEM: "${FATOR_CUBAGEM:-300}"
+    volumes:
+      - ./data:/data
+    ports:
+      # só no IP da LAN, como os outros serviços do .95
+      - "${BIND_IP:-192.168.0.95}:${PORTA:-8086}:8000"

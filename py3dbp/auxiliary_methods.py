@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from .constants import Axis
 
 
@@ -33,3 +33,15 @@ def set2Decimal(value, number_of_decimals=0):
     number_of_decimals = getLimitNumberOfDecimals(number_of_decimals)
 
     return Decimal(value).quantize(number_of_decimals)
+
+
+def ceil2Decimal(value, number_of_decimals=0):
+    ''' round UP to the given decimals (dimensions derived from folds/compression must never shrink) '''
+    # round(...,9) removes float noise such as 20.900000000000002
+    return Decimal(repr(round(float(value), 9))).quantize(
+        getLimitNumberOfDecimals(number_of_decimals), rounding=ROUND_CEILING)
+
+
+def overlap(a0, a1, b0, b1):
+    ''' length of the intersection of [a0,a1) and [b0,b1) '''
+    return max(0.0, min(float(a1), float(b1)) - max(float(a0), float(b0)))

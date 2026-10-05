@@ -1,24 +1,44 @@
 from .constants import RotationType, Axis
-from .auxiliary_methods import intersect, set2Decimal
+from .auxiliary_methods import intersect, set2Decimal, ceil2Decimal, overlap
 import numpy as np
-# required to plot a representation of Bin and contained items 
-from matplotlib.patches import Rectangle,Circle
-import matplotlib.pyplot as plt
-import mpl_toolkits.mplot3d.art3d as art3d
-from collections import Counter
+import math
 import copy
 DEFAULT_NUMBER_OF_DECIMALS = 0
 START_POSITION = [0, 0, 0]
 
 
+def _load_matplotlib():
+    ''' matplotlib is only needed by Painter: import it lazily so the packing core runs without it '''
+    global Rectangle, Circle, plt, art3d
+    from matplotlib.patches import Rectangle, Circle
+    import matplotlib.pyplot as plt
+    import mpl_toolkits.mplot3d.art3d as art3d
+
+
 
 class Item:
 
-    def __init__(self, partno,name,typeof, WHD, weight, level, loadbear, updown, color):
-        ''' '''
+    def __init__(self, partno,name,typeof, WHD, weight, level, loadbear, updown, color,
+                 fold_count=0, compress_ratio=1.0, quantity=1, sku=None):
+        '''
+        WHD    : for stacks (quantity > 1, fold_count > 0 or compress_ratio < 1) it is the size of ONE piece:
+                 W = length, H = width, D = thickness. The pieces are stacked along D (laid flat).
+        weight : for stacks, the weight of ONE piece.
+        fold_count     : how many times the piece may be folded in half (on its length or on its width).
+                         Every fold halves W or H and doubles the thickness.
+        compress_ratio : 0 < r <= 1. Thickness of a piece inside the stack = thickness * r (1 = incompressible).
+        quantity       : number of identical pieces represented by this item.
+        '''
+        if not 0 < compress_ratio <= 1:
+            raise ValueError('compress_ratio must be in (0, 1]')
+        if int(fold_count) != fold_count or fold_count < 0:
+            raise ValueError('fold_count must be an integer >= 0')
+        if int(quantity) != quantity or quantity < 1:
+            raise ValueError('quantity must be an integer >= 1')
         self.partno = partno
         self.name = name
         self.typeof = typeof
+        self.sku = sku if sku is not None else name
         self.width = WHD[0]
         self.height = WHD[1]
         self.depth = WHD[2]
@@ -32,24 +52,77 @@ class Item:
         # Draw item color
         self.color = color
         self.rotation_type = 0
-        self.position = START_POSITION
+        self.position = list(START_POSITION)
         self.number_of_decimals = DEFAULT_NUMBER_OF_DECIMALS
+        # --- folding / compression / quantity ---
+        self.fold_count = int(fold_count)
+        self.compress_ratio = float(compress_ratio)
+        self.quantity = int(quantity)
+        self.is_stack = self.quantity > 1 or self.fold_count > 0 or self.compress_ratio < 1
+        self.piece_whd = (float(WHD[0]), float(WHD[1]), float(WHD[2]))
+        self.unit_weight = float(weight)
+        self.fold_state = 0
+        if self.is_stack:
+            # a stack is always laid flat: thickness stays vertical, only length/width may swap
+            self.updown = False
+            self.setShape(0, self.quantity)
+
+
+    def foldStates(self):
+        '''
+        All shapes of ONE piece, least folded first:
+        [(w, h, thickness_in_stack, folds_on_length, folds_on_width), ...]
+        '''
+        W, H, D = self.piece_whd
+        states = []
+        for n in range(self.fold_count + 1):
+            for a in range(n, -1, -1):
+                b = n - a
+                states.append((W / 2 ** a, H / 2 ** b, D * 2 ** n * self.compress_ratio, a, b))
+        return states
+
+
+    def setShape(self, fold_state, quantity):
+        ''' set width/height/depth/weight of a stack with `quantity` pieces in the given fold state '''
+        w, h, t, _, _ = self.foldStates()[fold_state]
+        nd = self.number_of_decimals
+        self.fold_state = fold_state
+        self.quantity = quantity
+        self.width = ceil2Decimal(w, nd)
+        self.height = ceil2Decimal(h, nd)
+        self.depth = ceil2Decimal(t * quantity, nd)
+        self.weight = ceil2Decimal(self.unit_weight * quantity, nd)
+
+
+    def foldDescription(self):
+        ''' human readable fold state '''
+        _, _, _, a, b = self.foldStates()[self.fold_state]
+        parts = []
+        if a:
+            parts.append('{}x no comprimento'.format(a))
+        if b:
+            parts.append('{}x na largura'.format(b))
+        return 'dobrada ' + ' e '.join(parts) if parts else 'sem dobra'
 
 
     def formatNumbers(self, number_of_decimals):
         ''' '''
+        self.number_of_decimals = number_of_decimals
+        if self.is_stack:
+            self.setShape(self.fold_state, self.quantity)
+            return
         self.width = set2Decimal(self.width, number_of_decimals)
         self.height = set2Decimal(self.height, number_of_decimals)
         self.depth = set2Decimal(self.depth, number_of_decimals)
         self.weight = set2Decimal(self.weight, number_of_decimals)
-        self.number_of_decimals = number_of_decimals
 
 
     def string(self):
         ''' '''
-        return "%s(%sx%sx%s, weight: %s) pos(%s) rt(%s) vol(%s)" % (
+        extra = ' qty(%s) %s' % (self.quantity, self.foldDescription()) if self.is_stack else ''
+        return "%s(%sx%sx%s, weight: %s) pos(%s) rt(%s) vol(%s)%s" % (
             self.partno, self.width, self.height, self.depth, self.weight,
-            self.position, self.rotation_type, self.getVolume()
+            self.position, self.rotation_type, self.getVolume(), extra
         )
 
 
@@ -61,7 +134,7 @@ class Item:
     def getMaxArea(self):
         ''' '''
         a = sorted([self.width,self.height,self.depth],reverse=True) if self.updown == True else [self.width,self.height,self.depth]
-    
+
         return set2Decimal(a[0] * a[1] , self.number_of_decimals)
 
 
@@ -142,110 +215,177 @@ class Bin:
         return set2Decimal(total_weight, self.number_of_decimals)
 
 
-    def putItem(self, item, pivot,axis=None):
-        ''' put item in bin '''
-        fit = False
+    def _inside(self, pivot, dimension):
+        return (
+            pivot[0] + dimension[0] <= self.width and
+            pivot[1] + dimension[1] <= self.height and
+            pivot[2] + dimension[2] <= self.depth
+        )
+
+
+    def _collides(self, item):
+        for current_item_in_bin in self.items:
+            if intersect(current_item_in_bin, item):
+                return True
+        return False
+
+
+    def putItem(self, item, pivot,axis=None,rotations=None):
+        '''
+        put item in bin. Tries every allowed rotation (or only `rotations`) and, for stacks, every
+        fold state before giving up on this pivot.
+        '''
+        if item.is_stack:
+            return self._putStack(item, pivot)
+
         valid_item_position = item.position
-        item.position = pivot
         rotate = RotationType.ALL if item.updown == True else RotationType.Notupdown
-        for i in range(0, len(rotate)):
-            item.rotation_type = i
+        if rotations is not None:
+            rotate = [r for r in rotate if r in rotations]
+        for rotation in rotate:
+            item.rotation_type = rotation
             dimension = item.getDimension()
-            # rotatate
-            if (
-                self.width < pivot[0] + dimension[0] or
-                self.height < pivot[1] + dimension[1] or
-                self.depth < pivot[2] + dimension[2]
-            ):
+            if not self._inside(pivot, dimension):
                 continue
-
-            fit = True
-
-            for current_item_in_bin in self.items:
-                if intersect(current_item_in_bin, item):
-                    fit = False
-                    break
-
-            if fit:
-                # cal total weight
-                if self.getTotalWeight() + item.weight > self.max_weight:
-                    fit = False
-                    return fit
-                
-                # fix point float prob
-                if self.fix_point == True :
-                        
-                    [w,h,d] = dimension
-                    [x,y,z] = [float(pivot[0]),float(pivot[1]),float(pivot[2])]
-
-                    for i in range(3):
-                        # fix height
-                        y = self.checkHeight([x,x+float(w),y,y+float(h),z,z+float(d)])
-                        # fix width
-                        x = self.checkWidth([x,x+float(w),y,y+float(h),z,z+float(d)])
-                        # fix depth
-                        z = self.checkDepth([x,x+float(w),y,y+float(h),z,z+float(d)])
-
-                    # check stability on item 
-                    # rule : 
-                    # 1. Define a support ratio, if the ratio below the support surface does not exceed this ratio, compare the second rule.
-                    # 2. If there is no support under any vertices of the bottom of the item, then fit = False.
-                    if self.check_stable == True :
-                        # Cal the surface area of ​​item.
-                        item_area_lower = int(dimension[0] * dimension[1])
-                        # Cal the surface area of ​​the underlying support.
-                        support_area_upper = 0
-                        for i in self.fit_items:
-                            # Verify that the lower support surface area is greater than the upper support surface area * support_surface_ratio.
-                            if z == i[5]  :
-                                area = len(set([ j for j in range(int(x),int(x+int(w)))]) & set([ j for j in range(int(i[0]),int(i[1]))])) * \
-                                len(set([ j for j in range(int(y),int(y+int(h)))]) & set([ j for j in range(int(i[2]),int(i[3]))]))
-                                support_area_upper += area
-
-                        # If not , get four vertices of the bottom of the item.
-                        if support_area_upper / item_area_lower < self.support_surface_ratio :
-                            four_vertices = [[x,y],[x+float(w),y],[x,y+float(h)],[x+float(w),y+float(h)]]
-                            #  If any vertices is not supported, fit = False.
-                            c = [False,False,False,False]
-                            for i in self.fit_items:
-                                if z == i[5] :
-                                    for jdx,j in enumerate(four_vertices) :
-                                        if (i[0] <= j[0] <= i[1]) and (i[2] <= j[1] <= i[3]) :
-                                            c[jdx] = True
-                            if False in c :
-                                item.position = valid_item_position
-                                fit = False
-                                return fit
-                        
-                    self.fit_items = np.append(self.fit_items,np.array([[x,x+float(w),y,y+float(h),z,z+float(d)]]),axis=0)
-                    item.position = [set2Decimal(x),set2Decimal(y),set2Decimal(z)]
-
-                if fit :
-                    self.items.append(copy.deepcopy(item))
-
-            else :
+            item.position = pivot
+            if self._collides(item):
+                continue
+            # cal total weight (no rotation changes the weight)
+            if self.getTotalWeight() + item.weight > self.max_weight:
                 item.position = valid_item_position
+                return False
+            position = self._settle(item, pivot, dimension)
+            if position is None:
+                continue
+            self._commit(item, dimension)
+            return True
 
-            return fit
+        item.position = valid_item_position
+        return False
 
-        else :
-            item.position = valid_item_position
 
-        return fit
+    def _putStack(self, item, pivot):
+        '''
+        Put as many pieces of the stack as fit on this pivot, as a single column.
+        Fold states are tried from the least folded to the most folded, so a piece is only
+        folded when the unfolded shape does not fit. The caller decreases item.quantity by the
+        quantity actually placed (self.items[-1].quantity).
+        '''
+        z0 = float(pivot[2])
+        room_weight = float(self.max_weight) - float(self.getTotalWeight())
+        max_by_weight = math.floor(room_weight / item.unit_weight + 1e-9) if item.unit_weight > 0 else item.quantity
+        if max_by_weight < 1:
+            return False
+
+        for fold_state, (w, h, t, _, _) in enumerate(item.foldStates()):
+            for rotation in RotationType.Notupdown:
+                piece = copy.copy(item)
+                piece.rotation_type = rotation
+                piece.position = pivot
+                piece.setShape(fold_state, 1)
+                if not self._inside(pivot, piece.getDimension()):
+                    continue
+                k = min(item.quantity, max_by_weight, math.floor((float(self.depth) - z0) / t + 1e-9))
+                while k >= 1:
+                    piece.setShape(fold_state, k)
+                    if not self._inside(pivot, piece.getDimension()):
+                        k -= 1
+                        continue
+                    if self.getTotalWeight() + piece.weight > self.max_weight:
+                        k -= 1
+                        continue
+                    blockers = [o for o in self.items if intersect(o, piece)]
+                    if not blockers:
+                        break
+                    # something above the pivot limits the column height
+                    z_block = min(float(o.position[2]) for o in blockers)
+                    if z_block <= z0:
+                        k = 0
+                        break
+                    k = min(k - 1, math.floor((z_block - z0) / t + 1e-9))
+                if k < 1:
+                    continue
+                dimension = piece.getDimension()
+                if self._settle(piece, pivot, dimension) is None:
+                    continue
+                self._commit(piece, dimension)
+                return True
+        return False
+
+
+    def _settle(self, item, pivot, dimension):
+        '''
+        fix point float prob + stability rule. Sets item.position and returns it, or returns None
+        (position restored to pivot) when the item would be unstable or would collide after being
+        pushed by fix point.
+        '''
+        item.position = pivot
+        if self.fix_point != True:
+            return pivot
+
+        [w,h,d] = dimension
+        [x,y,z] = [float(pivot[0]),float(pivot[1]),float(pivot[2])]
+
+        for _ in range(3):
+            # fix height
+            y = self.checkHeight([x,x+float(w),y,y+float(h),z,z+float(d)])
+            # fix width
+            x = self.checkWidth([x,x+float(w),y,y+float(h),z,z+float(d)])
+            # fix depth
+            z = self.checkDepth([x,x+float(w),y,y+float(h),z,z+float(d)])
+
+        # check stability on item
+        # rule :
+        # 1. Define a support ratio, if the ratio below the support surface does not exceed this ratio, compare the second rule.
+        # 2. If there is no support under any vertices of the bottom of the item, then fit = False.
+        if self.check_stable == True :
+            # Cal the surface area of the item.
+            item_area_lower = float(w) * float(h)
+            # Cal the surface area of the underlying support.
+            support_area_upper = 0
+            for s in self.fit_items:
+                # Verify that the lower support surface area is greater than the upper support surface area * support_surface_ratio.
+                if z == s[5]  :
+                    support_area_upper += overlap(x, x+float(w), s[0], s[1]) * overlap(y, y+float(h), s[2], s[3])
+
+            # If not , get four vertices of the bottom of the item.
+            if item_area_lower > 0 and support_area_upper / item_area_lower < self.support_surface_ratio :
+                four_vertices = [[x,y],[x+float(w),y],[x,y+float(h)],[x+float(w),y+float(h)]]
+                #  If any vertices is not supported, fit = False.
+                c = [False,False,False,False]
+                for s in self.fit_items:
+                    if z == s[5] :
+                        for jdx,j in enumerate(four_vertices) :
+                            if (s[0] <= j[0] <= s[1]) and (s[2] <= j[1] <= s[3]) :
+                                c[jdx] = True
+                if False in c :
+                    return None
+
+        nd = self.number_of_decimals
+        item.position = [set2Decimal(x, nd),set2Decimal(y, nd),set2Decimal(z, nd)]
+        # fix point only looks at 1-D gaps, so the pushed position may overlap another item
+        if item.position != pivot and self._collides(item):
+            item.position = pivot
+            return None
+        return item.position
+
+
+    def _commit(self, item, dimension):
+        [w,h,d] = dimension
+        [x,y,z] = [float(item.position[0]),float(item.position[1]),float(item.position[2])]
+        self.fit_items = np.append(self.fit_items,np.array([[x,x+float(w),y,y+float(h),z,z+float(d)]]),axis=0)
+        placed = copy.deepcopy(item)
+        if not placed.is_stack:
+            placed.quantity = 1
+        self.items.append(placed)
 
 
     def checkDepth(self,unfix_point):
         ''' fix item position z '''
         z_ = [[0,0],[float(self.depth),float(self.depth)]]
         for j in self.fit_items:
-            # creat x set
-            x_bottom = set([i for i in range(int(j[0]),int(j[1]))])
-            x_top = set([i for i in range(int(unfix_point[0]),int(unfix_point[1]))])
-            # creat y set
-            y_bottom = set([i for i in range(int(j[2]),int(j[3]))])
-            y_top = set([i for i in range(int(unfix_point[2]),int(unfix_point[3]))])
-            # find intersection on x set and y set.
-            if len(x_bottom & x_top) != 0 and len(y_bottom & y_top) != 0 :
+            # find intersection on x and y.
+            if overlap(j[0], j[1], unfix_point[0], unfix_point[1]) > 0 and overlap(j[2], j[3], unfix_point[2], unfix_point[3]) > 0 :
                 z_.append([float(j[4]),float(j[5])])
         top_depth = unfix_point[5] - unfix_point[4]
         # find diff set on z_.
@@ -257,17 +397,11 @@ class Bin:
 
 
     def checkWidth(self,unfix_point):
-        ''' fix item position x ''' 
+        ''' fix item position x '''
         x_ = [[0,0],[float(self.width),float(self.width)]]
         for j in self.fit_items:
-            # creat z set
-            z_bottom = set([i for i in range(int(j[4]),int(j[5]))])
-            z_top = set([i for i in range(int(unfix_point[4]),int(unfix_point[5]))])
-            # creat y set
-            y_bottom = set([i for i in range(int(j[2]),int(j[3]))])
-            y_top = set([i for i in range(int(unfix_point[2]),int(unfix_point[3]))])
-            # find intersection on z set and y set.
-            if len(z_bottom & z_top) != 0 and len(y_bottom & y_top) != 0 :
+            # find intersection on z and y.
+            if overlap(j[4], j[5], unfix_point[4], unfix_point[5]) > 0 and overlap(j[2], j[3], unfix_point[2], unfix_point[3]) > 0 :
                 x_.append([float(j[0]),float(j[1])])
         top_width = unfix_point[1] - unfix_point[0]
         # find diff set on x_bottom and x_top.
@@ -276,20 +410,14 @@ class Bin:
             if x_[j+1][0] -x_[j][1] >= top_width:
                 return x_[j][1]
         return unfix_point[0]
-    
+
 
     def checkHeight(self,unfix_point):
         '''fix item position y '''
         y_ = [[0,0],[float(self.height),float(self.height)]]
         for j in self.fit_items:
-            # creat x set
-            x_bottom = set([i for i in range(int(j[0]),int(j[1]))])
-            x_top = set([i for i in range(int(unfix_point[0]),int(unfix_point[1]))])
-            # creat z set
-            z_bottom = set([i for i in range(int(j[4]),int(j[5]))])
-            z_top = set([i for i in range(int(unfix_point[4]),int(unfix_point[5]))])
-            # find intersection on x set and z set.
-            if len(x_bottom & x_top) != 0 and len(z_bottom & z_top) != 0 :
+            # find intersection on x and z.
+            if overlap(j[0], j[1], unfix_point[0], unfix_point[1]) > 0 and overlap(j[4], j[5], unfix_point[4], unfix_point[5]) > 0 :
                 y_.append([float(j[2]),float(j[3])])
         top_height = unfix_point[3] - unfix_point[2]
         # find diff set on y_bottom and y_top.
@@ -309,13 +437,13 @@ class Bin:
             for i in range(8):
                 a = Item(
                     partno='corner{}'.format(i),
-                    name='corner', 
+                    name='corner',
                     typeof='cube',
-                    WHD=(corner,corner,corner), 
-                    weight=0, 
-                    level=0, 
-                    loadbear=0, 
-                    updown=True, 
+                    WHD=(corner,corner,corner),
+                    weight=0,
+                    level=0,
+                    loadbear=0,
+                    updown=True,
                     color='#000000')
 
                 corner_list.append(a)
@@ -370,51 +498,76 @@ class Packer:
 
 
     def pack2Bin(self, bin, item,fix_point,check_stable,support_surface_ratio):
-        ''' pack item to bin '''
+        ''' pack item to bin. Returns True when (part of) the item was placed. '''
         fitted = False
         bin.fix_point = fix_point
         bin.check_stable = check_stable
         bin.support_surface_ratio = support_surface_ratio
 
-        # first put item on (0,0,0) , if corner exist ,first add corner in box. 
+        # first put item on (0,0,0) , if corner exist ,first add corner in box.
         if bin.corner != 0 and not bin.items:
             corner_lst = bin.addCorner()
             for i in range(len(corner_lst)) :
                 bin.putCorner(i,corner_lst[i])
 
         elif not bin.items:
-            response = bin.putItem(item, item.position)
+            response = bin.putItem(item, list(START_POSITION))
 
             if not response:
                 bin.unfitted_items.append(item)
-            return
+            return response
 
-        for axis in range(0, 3):
-            items_in_bin = bin.items
-            for ib in items_in_bin:
-                pivot = [0, 0, 0]
-                w, h, d = ib.getDimension()
-                if axis == Axis.WIDTH:
-                    pivot = [ib.position[0] + w,ib.position[1],ib.position[2]]
-                elif axis == Axis.HEIGHT:
-                    pivot = [ib.position[0],ib.position[1] + h,ib.position[2]]
-                elif axis == Axis.DEPTH:
-                    pivot = [ib.position[0],ib.position[1],ib.position[2] + d]
-                    
-                if bin.putItem(item, pivot, axis):
-                    fitted = True
+        # rigid items: try the preferred rotation on every pivot before turning the item,
+        # so an item is only rotated when it does not fit anywhere as it is
+        if item.is_stack:
+            rotation_rounds = [None]
+        else:
+            rotation_rounds = [[r] for r in (RotationType.ALL if item.updown == True else RotationType.Notupdown)]
+        for rotations in rotation_rounds:
+            for axis in range(0, 3):
+                items_in_bin = bin.items
+                for ib in items_in_bin:
+                    pivot = [0, 0, 0]
+                    w, h, d = ib.getDimension()
+                    if axis == Axis.WIDTH:
+                        pivot = [ib.position[0] + w,ib.position[1],ib.position[2]]
+                    elif axis == Axis.HEIGHT:
+                        pivot = [ib.position[0],ib.position[1] + h,ib.position[2]]
+                    elif axis == Axis.DEPTH:
+                        pivot = [ib.position[0],ib.position[1],ib.position[2] + d]
+
+                    if bin.putItem(item, pivot, axis, rotations):
+                        fitted = True
+                        break
+                if fitted:
                     break
             if fitted:
                 break
         if not fitted:
             bin.unfitted_items.append(item)
+        return fitted
+
+
+    def packItem(self, bin, item, fix_point, check_stable, support_surface_ratio):
+        '''
+        Pack one item. Stacks are split into columns until they are fully placed or nothing
+        else fits; item.quantity ends with the number of pieces still unpacked.
+        '''
+        while item.quantity > 0:
+            if not self.pack2Bin(bin, item, fix_point, check_stable, support_surface_ratio):
+                return
+            item.quantity -= bin.items[-1].quantity
+            if item.is_stack and item.quantity > 0:
+                item.position = list(START_POSITION)
+                item.rotation_type = 0
+                item.setShape(0, item.quantity)
 
 
     def sortBinding(self,bin):
         ''' sorted by binding '''
         b,front,back = [],[],[]
         for i in range(len(self.binding)):
-            b.append([]) 
+            b.append([])
             for item in self.items:
                 if item.name in self.binding[i]:
                     b[i].append(item)
@@ -425,12 +578,12 @@ class Packer:
                         back.append(item)
 
         min_c = min([len(i) for i in b])
-        
+
         sort_bind =[]
         for i in range(min_c):
             for j in range(len(b)):
                 sort_bind.append(b[j][i])
-        
+
         for i in b:
             for j in i:
                 if j not in sort_bind:
@@ -460,90 +613,34 @@ class Packer:
 
 
     def gravityCenter(self,bin):
-        ''' 
-        Deviation Of Cargo gravity distribution
-        ''' 
-        w = int(bin.width)
-        h = int(bin.height)
-        d = int(bin.depth)
-
-        area1 = [set(range(0,w//2+1)),set(range(0,h//2+1)),0]
-        area2 = [set(range(w//2+1,w+1)),set(range(0,h//2+1)),0]
-        area3 = [set(range(0,w//2+1)),set(range(h//2+1,h+1)),0]
-        area4 = [set(range(w//2+1,w+1)),set(range(h//2+1,h+1)),0]
-        area = [area1,area2,area3,area4]
+        '''
+        Deviation Of Cargo gravity distribution: % of the weight on each quarter of the floor
+        [front-left, front-right, back-left, back-right]. The weight of an item is split by the
+        area of its footprint that lies on each quarter.
+        '''
+        W = float(bin.width)
+        H = float(bin.height)
+        quarters = [(0, W/2, 0, H/2), (W/2, W, 0, H/2), (0, W/2, H/2, H), (W/2, W, H/2, H)]
+        r = [0.0, 0.0, 0.0, 0.0]
 
         for i in bin.items:
+            w, h, _ = [float(v) for v in i.getDimension()]
+            x0, y0 = float(i.position[0]), float(i.position[1])
+            area = w * h
+            if area <= 0:
+                continue
+            for j, (qx0, qx1, qy0, qy1) in enumerate(quarters):
+                r[j] += overlap(x0, x0 + w, qx0, qx1) * overlap(y0, y0 + h, qy0, qy1) / area * float(i.weight)
 
-            x_st = int(i.position[0])
-            y_st = int(i.position[1])
-            if i.rotation_type == 0:
-                x_ed = int(i.position[0] + i.width)
-                y_ed = int(i.position[1] + i.height)
-            elif i.rotation_type == 1:
-                x_ed = int(i.position[0] + i.height)
-                y_ed = int(i.position[1] + i.width)
-            elif i.rotation_type == 2:
-                x_ed = int(i.position[0] + i.height)
-                y_ed = int(i.position[1] + i.depth)
-            elif i.rotation_type == 3:
-                x_ed = int(i.position[0] + i.depth)
-                y_ed = int(i.position[1] + i.height)
-            elif i.rotation_type == 4:
-                x_ed = int(i.position[0] + i.depth)
-                y_ed = int(i.position[1] + i.width)
-            elif i.rotation_type == 5:
-                x_ed = int(i.position[0] + i.width)
-                y_ed = int(i.position[1] + i.depth)
-
-            x_set = set(range(x_st,int(x_ed)+1))
-            y_set = set(range(y_st,y_ed+1))
-
-            # cal gravity distribution
-            for j in range(len(area)):
-                if x_set.issubset(area[j][0]) and y_set.issubset(area[j][1]) : 
-                    area[j][2] += int(i.weight)
-                    break
-                # include x and !include y
-                elif x_set.issubset(area[j][0]) == True and y_set.issubset(area[j][1]) == False and len(y_set & area[j][1]) != 0 : 
-                    y = len(y_set & area[j][1]) / (y_ed - y_st) * int(i.weight)
-                    area[j][2] += y
-                    if j >= 2 :
-                        area[j-2][2] += (int(i.weight) - x)
-                    else :
-                        area[j+2][2] += (int(i.weight) - y)
-                    break
-                # include y and !include x
-                elif x_set.issubset(area[j][0]) == False and y_set.issubset(area[j][1]) == True and len(x_set & area[j][0]) != 0 : 
-                    x = len(x_set & area[j][0]) / (x_ed - x_st) * int(i.weight)
-                    area[j][2] += x
-                    if j >= 2 :
-                        area[j-2][2] += (int(i.weight) - x)
-                    else :
-                        area[j+2][2] += (int(i.weight) - x)
-                    break
-                # !include x and !include y
-                elif x_set.issubset(area[j][0])== False and y_set.issubset(area[j][1]) == False and len(y_set & area[j][1]) != 0  and len(x_set & area[j][0]) != 0 :
-                    all = (y_ed - y_st) * (x_ed - x_st)
-                    y = len(y_set & area[0][1])
-                    y_2 = y_ed - y_st - y
-                    x = len(x_set & area[0][0])
-                    x_2 = x_ed - x_st - x
-                    area[0][2] += x * y / all * int(i.weight)
-                    area[1][2] += x_2 * y / all * int(i.weight)
-                    area[2][2] += x * y_2 / all * int(i.weight)
-                    area[3][2] += x_2 * y_2 / all * int(i.weight)
-                    break
-            
-        r = [area[0][2],area[1][2],area[2][2],area[3][2]]
-        result = []
-        for i in r :
-            result.append(round(i / sum(r) * 100,2))
-        return result
+        total = sum(r)
+        if total == 0:
+            return [0, 0, 0, 0]
+        return [round(v / total * 100, 2) for v in r]
 
 
-    def pack(self, bigger_first=False,distribute_items=True,fix_point=True,check_stable=True,support_surface_ratio=0.75,binding=[],number_of_decimals=DEFAULT_NUMBER_OF_DECIMALS):
+    def pack(self, bigger_first=False,distribute_items=True,fix_point=True,check_stable=True,support_surface_ratio=0.75,binding=None,number_of_decimals=DEFAULT_NUMBER_OF_DECIMALS):
         '''pack master func '''
+        binding = list(binding) if binding else []
         # set decimals
         for bin in self.bins:
             bin.formatNumbers(number_of_decimals)
@@ -564,33 +661,31 @@ class Packer:
             self.sortBinding(bin)
 
         for idx,bin in enumerate(self.bins):
+            # distribute_items=False: every bin gets all the items, so work on a copy
+            items = self.items if distribute_items else copy.deepcopy(self.items)
             # pack item to bin
-            for item in self.items:
-                self.pack2Bin(bin, item, fix_point, check_stable, support_surface_ratio)
+            for item in (copy.deepcopy(items) if binding != [] else items):
+                self.packItem(bin, item, fix_point, check_stable, support_surface_ratio)
 
             if binding != []:
                 # resorted
-                self.items.sort(key=lambda item: item.getVolume(), reverse=bigger_first)
-                self.items.sort(key=lambda item: item.loadbear, reverse=True)
-                self.items.sort(key=lambda item: item.level, reverse=False)
+                items.sort(key=lambda item: item.getVolume(), reverse=bigger_first)
+                items.sort(key=lambda item: item.loadbear, reverse=True)
+                items.sort(key=lambda item: item.level, reverse=False)
                 # clear bin
                 bin.items = []
                 bin.unfitted_items = self.unfit_items
                 bin.fit_items = np.array([[0,bin.width,0,bin.height,0,0]])
                 # repacking
-                for item in self.items:
-                    self.pack2Bin(bin, item,fix_point,check_stable,support_surface_ratio)
-            
-            # Deviation Of Cargo Gravity Center 
+                for item in items:
+                    self.packItem(bin, item,fix_point,check_stable,support_surface_ratio)
+
+            # Deviation Of Cargo Gravity Center
             self.bins[idx].gravity = self.gravityCenter(bin)
 
             if distribute_items :
-                for bitem in bin.items:
-                    no = bitem.partno
-                    for item in self.items :
-                        if item.partno == no :
-                            self.items.remove(item)
-                            break
+                # items are tracked by object (not by partno, which may repeat)
+                self.items = [item for item in self.items if item.quantity > 0]
 
         # put order of items
         self.putOrder()
@@ -598,9 +693,6 @@ class Packer:
         if self.items != []:
             self.unfit_items = copy.deepcopy(self.items)
             self.items = []
-        # for item in self.items.copy():
-        #     if item in bin.unfitted_items:
-        #         self.items.remove(item)
 
 
 
@@ -608,6 +700,7 @@ class Painter:
 
     def __init__(self,bins):
         ''' '''
+        _load_matplotlib()
         self.items = bins.items
         self.width = bins.width
         self.height = bins.height

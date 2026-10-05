@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cubagem</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --mute:#667085; --line:#e3e6eb; --acc:#2f5bd3; --err:#b42318; --ok:#067647; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:12px 16px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  nav button { background:none; border:0; padding:8px 12px; border-radius:6px; cursor:pointer; font:inherit; color:var(--mute); }
+  nav button.on { background:#e8eefc; color:var(--acc); font-weight:600; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  section { display:none; } section.on { display:block; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+  label { display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--mute); }
+  input, textarea, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); }
+  input[type=number] { width:100px; }
+  textarea { width:100%; min-height:140px; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+  button.p { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:7px 14px; cursor:pointer; font:inherit; }
+  button.s { background:#fff; border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
+  .tbl { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--mute); font-weight:600; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .msg { margin-top:8px; font-size:13px; } .msg.err { color:var(--err); } .msg.ok { color:var(--ok); }
+  .hint { color:var(--mute); font-size:12px; margin:6px 0 0; }
+  .vol { border:1px solid var(--line); border-radius:8px; padding:12px; margin-top:12px; }
+  .vol h3 { margin:0 0 6px; font-size:14px; }
+  .kpi { display:flex; gap:24px; flex-wrap:wrap; margin:8px 0; }
+  .kpi div b { display:block; font-size:18px; }
+  .kpi div span { color:var(--mute); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cubagem</h1>
+  <nav>
+    <button data-tab="produtos" class="on">Produtos</button>
+    <button data-tab="embalagens">Embalagens</button>
+    <button data-tab="cubagem">Cubagem</button>
+  </nav>
+</header>
+<main>
+
+<section id="produtos" class="on">
+  <div class="card">
+    <h2>Importar da planilha</h2>
+    <div class="row"><label>Código do produto<input id="imp-codigo" placeholder="F2505"></label></div>
+    <p class="hint">Cole as linhas do Excel: tamanho, comprimento (cm), largura (cm), espessura (cm), peso (g), dobras possíveis, índice de compressão. A linha de cabeçalho é ignorada.</p>
+    <textarea id="imp-texto" placeholder="38	34,33	24,67	2,20	508,33	1	0,95"></textarea>
+    <div class="row" style="margin-top:8px"><button class="p" id="imp-btn">Importar</button></div>
+    <div class="msg" id="imp-msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Cadastrar / editar um tamanho</h2>
+    <div class="row">
+      <label>Código<input id="p-codigo" size="8"></label>
+      <label>Tamanho<input id="p-tamanho" size="5"></label>
+      <label>Descrição<input id="p-descricao" size="20"></label>
+      <label>Comprimento cm<input id="p-comprimento" type="number" step="0.01" min="0"></label>
+      <label>Largura cm<input id="p-largura" type="number" step="0.01" min="0"></label>
+      <label>Espessura cm<input id="p-espessura" type="number" step="0.01" min="0"></label>
+      <label>Peso g<input id="p-peso_g" type="number" step="0.01" min="0"></label>
+      <label>Dobras<input id="p-dobras" type="number" step="1" min="0" max="4" value="0"></label>
+      <label>Compressão<input id="p-compressao" type="number" step="0.01" min="0.01" max="1" value="1"></label>
+      <label>Tipo<select id="p-empilhavel"><option value="1">Vestuário (empilha)</option><option value="0">Rígido</option></select></label>
+      <button class="p" id="p-salvar">Salvar</button>
+    </div>
+    <p class="hint">Compressão de 0 a 1: 1 = não comprime; 0,95 = a espessura cai para 95% na pilha. Cada dobra corta o comprimento ou a largura ao meio e dobra a espessura.</p>
+    <div class="msg" id="p-msg"></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2>Produtos cadastrados</h2>
+      <label>Filtrar código<input id="p-filtro" size="10"></label></div>
+    <div class="tbl"><table id="p-tabela"></table></div>
+  </div>
+</section>
+
+<section id="embalagens">
+  <div class="card">
+    <h2>Cadastrar / editar embalagem</h2>
+    <div class="row">
+      <label>Código<input id="e-codigo" size="8"></label>
+      <label>Descrição<input id="e-descricao" size="18"></label>
+      <label>Tipo<select id="e-tipo"><option>caixa</option><option>fardo</option></select></label>
+      <label>Comprimento cm (interno)<input id="e-comprimento" type="number" step="0.1" min="0"></label>
+      <label>Largura cm<input id="e-largura" type="number" step="0.1" min="0"></label>
+      <label>Altura cm<input id="e-altura" type="number" step="0.1" min="0"></label>
+      <label>Peso máx. g<input id="e-peso_max_g" type="number" step="1" min="0"></label>
+      <label>Tara g<input id="e-tara_g" type="number" step="1" min="0" value="0"></label>
+      <label>Custo R$<input id="e-custo" type="number" step="0.01" min="0"></label>
+      <label>Ativa<select id="e-ativo"><option value="1">sim</option><option value="0">não</option></select></label>
+      <button class="p" id="e-salvar">Salvar</button>
+    </div>
+    <p class="hint">Use as medidas internas. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
+    <div class="msg" id="e-msg"></div>
+  </div>
+  <div class="card"><h2>Embalagens</h2><div class="tbl"><table id="e-tabela"></table></div></div>
+</section>
+
+<section id="cubagem">
+  <div class="card">
+    <h2>Pedido</h2>
+    <div class="row">
+      <label>Nº do pedido<input id="c-pedido" size="10"></label>
+      <label>Fator de cubagem kg/m³<input id="c-fator" type="number" step="1" min="1" value="300"></label>
+    </div>
+    <p class="hint">Uma linha por item: código, tamanho e quantidade (ex.: <code>F2505 38 120</code>). Também aceita colar do Excel.</p>
+    <textarea id="c-itens" placeholder="F2505 38 120&#10;F2505 40 80"></textarea>
+    <div class="row" style="margin-top:8px"><button class="p" id="c-calc">Calcular</button></div>
+    <div class="msg" id="c-msg"></div>
+  </div>
+  <div class="card" id="c-res" style="display:none"></div>
+</section>
+
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = (v, d=2) => v == null || v === '' ? '' : Number(v).toLocaleString('pt-BR', {minimumFractionDigits:d, maximumFractionDigits:d});
+const num = s => { s = String(s).trim(); if (s.includes(',') || /^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g,'').replace(',','.'); return Number(s); };
+
+async function api(method, url, body) {
+  const r = await fetch(url, {method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const d = data.detail;
+    let m = typeof d === 'string' ? d : d?.mensagem || 'erro ' + r.status;
+    if (d?.erros?.length) m += ': ' + d.erros.map(e => `linha ${e.linha} (${e.erro})`).join('; ');
+    if (d?.produtos) m += ': ' + d.produtos.join(', ');
+    if (Array.isArray(d)) m = d.map(e => `${e.loc?.slice(-1)[0]}: ${e.msg}`).join('; ');
+    throw new Error(m);
+  }
+  return data;
+}
+function msg(el, text, ok) { const m = $(el); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button, section').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); $('#' + b.dataset.tab).classList.add('on');
+});
+
+// ---------------- produtos
+const P_FIELDS = ['descricao','comprimento','largura','espessura','peso_g','dobras','compressao'];
+let produtos = [];
+async function carregarProdutos() {
+  produtos = await api('GET', '/api/produtos');
+  const f = $('#p-filtro').value.trim().toUpperCase();
+  const rows = produtos.filter(p => !f || p.codigo.includes(f));
+  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th></th></tr>' +
+    rows.map((p, i) => `<tr><td>${esc(p.codigo)}</td><td>${esc(p.tamanho)}</td><td>${esc(p.descricao)}</td>
+      <td class="n">${fmt(p.comprimento)}</td><td class="n">${fmt(p.largura)}</td><td class="n">${fmt(p.espessura)}</td>
+      <td class="n">${fmt(p.peso_g)}</td><td class="n">${p.dobras}</td><td class="n">${fmt(p.compressao)}</td>
+      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td>
+      <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
+  $('#p-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+    const p = rows[b.dataset.edit];
+    $('#p-codigo').value = p.codigo; $('#p-tamanho').value = p.tamanho; $('#p-empilhavel').value = p.empilhavel ? '1' : '0';
+    P_FIELDS.forEach(k => $('#p-' + k).value = p[k]); window.scrollTo(0, 0);
+  });
+  $('#p-tabela').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const p = rows[b.dataset.del];
+    if (!confirm(`Apagar ${p.codigo} tamanho ${p.tamanho}?`)) return;
+    await api('DELETE', `/api/produtos/${encodeURIComponent(p.codigo)}/${encodeURIComponent(p.tamanho)}`); carregarProdutos();
+  });
+}
+$('#p-filtro').oninput = carregarProdutos;
+$('#p-salvar').onclick = async () => {
+  const cod = $('#p-codigo').value.trim(), tam = $('#p-tamanho').value.trim();
+  if (!cod || !tam) return msg('#p-msg', 'Informe código e tamanho');
+  const body = {empilhavel: $('#p-empilhavel').value === '1'};
+  P_FIELDS.forEach(k => body[k] = k === 'descricao' ? $('#p-' + k).value : num($('#p-' + k).value));
+  try { await api('PUT', `/api/produtos/${encodeURIComponent(cod)}/${encodeURIComponent(tam)}`, body); msg('#p-msg', `Salvo ${cod.toUpperCase()}/${tam.toUpperCase()}`, true); carregarProdutos(); }
+  catch (e) { msg('#p-msg', e.message); }
+};
+$('#imp-btn').onclick = async () => {
+  try {
+    const r = await api('POST', '/api/produtos/importar', {codigo: $('#imp-codigo').value.trim(), texto: $('#imp-texto').value});
+    msg('#imp-msg', `${r.gravados} tamanhos gravados: ${r.tamanhos.join(', ')}`, true); carregarProdutos();
+  } catch (e) { msg('#imp-msg', e.message); }
+};
+
+// ---------------- embalagens
+const E_FIELDS = ['descricao','tipo','comprimento','largura','altura','peso_max_g','tara_g','custo'];
+async function carregarEmbalagens() {
+  const rows = await api('GET', '/api/embalagens');
+  $('#e-tabela').innerHTML = '<tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="n">C×L×A cm</th><th class="n">Peso máx. g</th><th class="n">Tara g</th><th class="n">Custo</th><th>Ativa</th><th></th></tr>' +
+    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}</td>
+      <td class="n">${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
+      <td class="n">${fmt(e.tara_g,0)}</td><td class="n">${fmt(e.custo)}</td><td>${e.ativo ? 'sim' : 'não'}</td>
+      <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
+  $('#e-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+    const e = rows[b.dataset.edit]; $('#e-codigo').value = e.codigo; $('#e-ativo').value = e.ativo ? '1' : '0';
+    E_FIELDS.forEach(k => $('#e-' + k).value = e[k] ?? ''); window.scrollTo(0, 0);
+  });
+  $('#e-tabela').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const e = rows[b.dataset.del]; if (!confirm(`Apagar embalagem ${e.codigo}?`)) return;
+    await api('DELETE', `/api/embalagens/${encodeURIComponent(e.codigo)}`); carregarEmbalagens();
+  });
+}
+$('#e-salvar').onclick = async () => {
+  const cod = $('#e-codigo').value.trim(); if (!cod) return msg('#e-msg', 'Informe o código');
+  const body = {ativo: $('#e-ativo').value === '1'};
+  E_FIELDS.forEach(k => { const v = $('#e-' + k).value; body[k] = ['descricao','tipo'].includes(k) ? v : (v === '' ? null : num(v)); });
+  if (body.tara_g == null) body.tara_g = 0;
+  try { await api('PUT', `/api/embalagens/${encodeURIComponent(cod)}`, body); msg('#e-msg', `Salva ${cod.toUpperCase()}`, true); carregarEmbalagens(); }
+  catch (e) { msg('#e-msg', e.message); }
+};
+
+// ---------------- cubagem
+$('#c-calc').onclick = async () => {
+  const itens = [];
+  for (const linha of $('#c-itens').value.split('\n')) {
+    const c = linha.trim().split(/[\t;]+|\s+/).filter(Boolean);
+    if (c.length < 3) continue;
+    const q = num(c[2]); if (!Number.isInteger(q) || q <= 0) continue;
+    itens.push({codigo: c[0], tamanho: c[1], quantidade: q});
+  }
+  if (!itens.length) return msg('#c-msg', 'Nenhuma linha válida (código tamanho quantidade)');
+  $('#c-msg').textContent = 'Calculando...'; $('#c-msg').className = 'msg';
+  try {
+    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null});
+    $('#c-msg').textContent = '';
+    const box = $('#c-res'); box.style.display = 'block';
+    if (!r.ok) { box.innerHTML = `<p class="msg err">${esc(r.motivo)}</p>`; return; }
+    const t = r.totais;
+    box.innerHTML = `<h2>Resultado ${esc(r.pedido)}</h2>
+      <div class="kpi"><div><b>${t.volumes}</b><span>volumes</span></div><div><b>${t.pecas}</b><span>peças</span></div>
+      <div><b>${fmt(t.peso_real_kg)} kg</b><span>peso real</span></div><div><b>${fmt(t.peso_taxavel_kg)} kg</b><span>peso taxável</span></div>
+      ${t.custo_total != null ? `<div><b>R$ ${fmt(t.custo_total)}</b><span>embalagens</span></div>` : ''}</div>
+      <p class="hint">Critério: ${esc(r.criterio)} · fator ${fmt(r.fator_cubagem,0)} kg/m³</p>` +
+      r.volumes.map((v, i) => `<div class="vol"><h3>Volume ${i + 1}: ${esc(v.embalagem)} (${v.dimensoes_cm.map(x => fmt(x,1)).join(' × ')} cm)</h3>
+        <div class="hint">ocupação ${fmt(v.ocupacao_pct,1)}% · real ${fmt(v.peso_real_kg)} kg · cubado ${fmt(v.peso_cubado_kg)} kg · taxável ${fmt(v.peso_taxavel_kg)} kg</div>
+        <div class="tbl"><table><tr><th>Produto</th><th>Tam.</th><th class="n">Qtd</th><th>Forma</th></tr>
+        ${v.itens.map(it => `<tr><td>${esc(it.codigo)}</td><td>${esc(it.tamanho)}</td><td class="n">${it.qtd}</td><td>${esc(it.forma)}</td></tr>`).join('')}
+        </table></div></div>`).join('');
+  } catch (e) { msg('#c-msg', e.message); }
+};
+
+carregarProdutos(); carregarEmbalagens();
+</script>
+</body>
+</html>

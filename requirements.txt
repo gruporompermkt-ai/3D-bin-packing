@@ -1,5 +1,4 @@
-# python 3.6.5
-numpy == 1.19.5
-matplotlib == 3.3.4
-Flask==2.2.5
-Flask-Cors==3.0.10
+# núcleo (py3dbp)
+numpy>=2.0,<3
+# visualização 3D (opcional, só para o Painter / example*.py)
+matplotlib>=3.8
