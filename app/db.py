@@ -56,6 +56,8 @@ MIGRACOES = [
     ("produtos", "curvavel", "INTEGER NOT NULL DEFAULT 1"),
     ("embalagens", "raio_canto", "REAL NOT NULL DEFAULT 0"),
     ("embalagens", "molde", "TEXT"),
+    ("embalagens", "manga_cm", "REAL NOT NULL DEFAULT 0"),
+    ("embalagens", "folga_ponta_cm", "REAL NOT NULL DEFAULT 0"),
 ]
 
 

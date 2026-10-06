@@ -134,3 +134,19 @@ def test_embalagem_molde_e_arredondada(client):
     assert r.status_code == 200, r.text
     v = r.json()["volumes"][0]
     assert v["forma"] == "molde" and v["contorno_cm"]
+
+
+def test_embalagem_manga_e_numero_de_fardos(client):
+    r = client.put("/api/embalagens/MANGA-80", json={"tipo": "fardo", "forma": "manga", "manga_cm": 80, "raio_canto": 6,
+                                                      "folga_ponta_cm": 5, "peso_max_g": 37000})
+    assert r.status_code == 200, r.text
+    e = client.get("/api/embalagens").json()[0]
+    assert (e["forma"], e["manga_cm"], e["folga_ponta_cm"]) == ("manga", 80, 5) and e["altura"] == 300
+    assert client.put("/api/embalagens/X", json={"tipo": "fardo", "forma": "manga", "peso_max_g": 37000}).status_code == 422
+    client.put("/api/produtos/F2505/38", json={"comprimento": 34.33, "largura": 24.67, "espessura": 2.2, "peso_g": 508.33,
+                                               "dobras": 1, "compressao": 0.95})
+    r = client.post("/api/cubagem", json={"itens": [{"codigo": "F2505", "tamanho": "38", "quantidade": 40}],
+                                          "volumes": 2, "iteracoes": 2})
+    assert r.status_code == 200, r.text
+    res = r.json()
+    assert res["totais"]["volumes"] == 2 and [sum(i["qtd"] for i in v["itens"]) for v in res["volumes"]] == [20, 20]

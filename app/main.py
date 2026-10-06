@@ -47,12 +47,14 @@ class ProdutoIn(BaseModel):
 class EmbalagemIn(BaseModel):
     descricao: str = ""
     tipo: Literal["caixa", "fardo"] = "caixa"
-    forma: Literal["flexivel", "retangular", "cilindrico", "arredondado", "molde"] = "flexivel"
+    forma: Literal["flexivel", "retangular", "cilindrico", "arredondado", "molde", "manga"] = "flexivel"
+    manga_cm: float = Field(0, ge=0, description="fardo de manga: largura do tubo deitado no rolo (cm)")
+    folga_ponta_cm: float = Field(0, ge=0, description="fardo de manga: cm a mais em cada ponta franzida")
     raio_canto: float = Field(0, ge=0, description="cm, fardo arredondado")
     molde: Optional[List[List[float]]] = Field(None, description="fardo molde: [[x, y], ...] de 0 a 1")
-    comprimento: float = Field(gt=0, description="cm, interno")
-    largura: Optional[float] = Field(None, gt=0, description="cm; ignorada no fardo cilíndrico")
-    altura: float = Field(gt=0)
+    comprimento: Optional[float] = Field(None, gt=0, description="cm, interno (dispensado no fardo de manga)")
+    largura: Optional[float] = Field(None, gt=0, description="cm; ignorada no fardo cilíndrico e de manga")
+    altura: Optional[float] = Field(None, gt=0, description="cm (fardo de manga: comprimento máximo, opcional)")
     peso_max_g: float = Field(gt=0)
     tara_g: float = Field(0, ge=0)
     custo: Optional[float] = Field(None, ge=0)
@@ -75,6 +77,7 @@ class PedidoIn(BaseModel):
     itens: List[ItemPedido] = Field(min_length=1)
     fator_cubagem: Optional[float] = Field(None, gt=0)
     embalagens: Optional[List[str]] = None
+    volumes: Optional[int] = Field(None, ge=1, le=200, description="número de fardos que o cliente quer (fardo de manga)")
     iteracoes: int = Field(ITERACOES_PADRAO, ge=1, le=40)
 
 
@@ -180,7 +183,18 @@ def salvar_embalagem(codigo: str, e: EmbalagemIn):
     if e.tara_g >= e.peso_max_g:
         raise HTTPException(422, "a tara deve ser menor que o peso máximo")
     forma = e.forma if e.tipo == "fardo" else "retangular"
+    comprimento, altura = e.comprimento, e.altura
     largura = e.largura if e.largura is not None or forma != "cilindrico" else e.comprimento  # cilindro sem largura: diâmetro = comprimento
+    if forma == "manga":
+        if e.manga_cm <= 0:
+            raise HTTPException(422, "informe a largura da manga deitada (cm)")
+        if e.raio_canto * 2 >= e.manga_cm:
+            raise HTTPException(422, "raio do canto grande demais para essa manga")
+        modelo = Embalagem(codigo, 0, 0, altura or 0, e.peso_max_g, e.tara_g, tipo="fardo", forma="manga",
+                           raio_canto=e.raio_canto, manga_cm=e.manga_cm, folga_ponta_cm=e.folga_ponta_cm)
+        comprimento, largura, altura = modelo.comprimento, modelo.largura, modelo.altura
+    if comprimento is None or altura is None:
+        raise HTTPException(422, "informe comprimento e altura")
     if largura is None:
         raise HTTPException(422, "informe a largura")
     molde = None
@@ -193,15 +207,17 @@ def salvar_embalagem(codigo: str, e: EmbalagemIn):
     with db.conectar() as con:
         con.execute(
             """INSERT INTO embalagens (codigo, descricao, tipo, forma, comprimento, largura, altura, peso_max_g, tara_g, custo, ativo,
-                                     raio_canto, molde)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                     raio_canto, molde, manga_cm, folga_ponta_cm)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(codigo) DO UPDATE SET descricao=excluded.descricao, tipo=excluded.tipo, forma=excluded.forma,
-                 raio_canto=excluded.raio_canto, molde=excluded.molde,
+                 raio_canto=excluded.raio_canto, molde=excluded.molde, manga_cm=excluded.manga_cm,
+                 folga_ponta_cm=excluded.folga_ponta_cm,
                  comprimento=excluded.comprimento, largura=excluded.largura, altura=excluded.altura,
                  peso_max_g=excluded.peso_max_g, tara_g=excluded.tara_g, custo=excluded.custo, ativo=excluded.ativo,
                  atualizado_em=datetime('now','localtime')""",
-            (_norm(codigo), e.descricao, e.tipo, forma, e.comprimento, largura, e.altura, e.peso_max_g, e.tara_g, e.custo,
-             int(e.ativo), e.raio_canto if forma == "arredondado" else 0, molde))
+            (_norm(codigo), e.descricao, e.tipo, forma, comprimento, largura, altura, e.peso_max_g, e.tara_g, e.custo,
+             int(e.ativo), e.raio_canto if forma in ("arredondado", "manga") else 0, molde,
+             e.manga_cm if forma == "manga" else 0, e.folga_ponta_cm if forma == "manga" else 0))
     return {"ok": True}
 
 
@@ -234,13 +250,14 @@ def calcular(pedido: PedidoIn):
         rows = con.execute("SELECT * FROM embalagens WHERE ativo=1").fetchall()
     catalogo = [Embalagem(r["codigo"], r["comprimento"], r["largura"], r["altura"], r["peso_max_g"], r["tara_g"],
                           r["custo"], r["tipo"], r["forma"], r["raio_canto"] or 0,
-                          json.loads(r["molde"]) if r["molde"] else None) for r in rows]
+                          json.loads(r["molde"]) if r["molde"] else None, r["manga_cm"] or 0,
+                          r["folga_ponta_cm"] or 0) for r in rows]
     if pedido.embalagens:
         quero = {_norm(c) for c in pedido.embalagens}
         catalogo = [e for e in catalogo if e.codigo in quero]
     if not catalogo:
         raise HTTPException(422, "nenhuma embalagem ativa cadastrada")
-    resultado = cartonize(linhas, catalogo, pedido.fator_cubagem or FATOR_CUBAGEM, pedido.iteracoes)
+    resultado = cartonize(linhas, catalogo, pedido.fator_cubagem or FATOR_CUBAGEM, pedido.iteracoes, pedido.volumes)
     resultado["pedido"] = pedido.pedido
     return resultado
 

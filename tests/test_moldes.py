@@ -87,3 +87,56 @@ def test_arredondado_cabe_menos_que_retangulo_e_mais_que_cilindro():
         vol, _ = pack_one(fd, pedido, iteracoes=2)
         pecas[forma] = vol.pecas
     assert pecas["cilindrico"] <= pecas["arredondado"] <= pecas["retangular"]
+
+
+# ---------------------------------------------------------------- fardo de manga (rolo de 80 cm)
+from py3dbp.cartonizer import _dividir
+
+MANGA = dict(tipo="fardo", forma="manga", raio_canto=6, manga_cm=80, folga_ponta_cm=5)
+CALCAS = {t: Produto("F2505", t, c, l, e, g, 1, 0.95) for t, c, l, e, g in [
+    ("38", 34.33, 24.67, 2.2, 508.33), ("40", 34.5, 26.67, 2.2, 506.33), ("42", 34.5, 26.67, 2.25, 521),
+    ("44", 34.5, 26.67, 2.25, 542.33), ("46", 34.5, 26.67, 2.5, 553.33)]}
+
+
+def test_secoes_da_manga_tem_o_contorno_do_tubo():
+    m = Embalagem("M", 0, 0, 0, 37000, **MANGA)
+    for w, h in m.secoes_manga:
+        contorno = moldes.area_poligono  # só para garantir o import
+        perimetro = 2 * (w + h) - (8 - 2 * math.pi) * 6
+        assert perimetro == pytest.approx(160, abs=0.5)
+    # a seção do fardo da foto (48 x 37) está entre as testadas
+    assert any(abs(w - 48) < 1 and abs(h - 37) < 1 for w, h in m.secoes_manga)
+    assert m.altura == Embalagem.COMPRIMENTO_MAX_MANGA
+
+
+def test_fardo_da_foto_50_pecas():
+    """calibração: ~50 calças -> fardo real de ~80 x 48 x 37 cm (contorno do tubo = 160 cm)"""
+    m = Embalagem("M", 0, 0, 0, 37000, **MANGA)
+    r = cartonize([(p, 10) for p in CALCAS.values()], [m])
+    assert r["totais"]["volumes"] == 1 and r["totais"]["pecas"] == 50
+    v = r["volumes"][0]
+    comp, larg, alt = v["dimensoes_cm"]
+    assert 70 <= comp <= 90                                     # ~80 cm como o fardo real
+    assert v["contorno_plano"] == "yz" and v["manga_cm"] == 80
+    perimetro = 2 * (larg + alt) - (8 - 2 * math.pi) * 6
+    assert perimetro <= 160 + 2                                 # a seção cabe no tubo
+    assert all(q["x"] >= 5 - 1e-6 and q["x"] + q["c"] <= comp - 5 + 1e-6 for q in v["layout"])  # pontas
+
+
+def test_manga_divide_pelo_peso_e_pelo_pedido_do_cliente():
+    m = Embalagem("M", 0, 0, 0, 37000, **MANGA)
+    pedido = [(CALCAS["38"], 40), (CALCAS["40"], 40), (CALCAS["42"], 30), (CALCAS["44"], 30)]
+    r = cartonize(pedido, [m], iteracoes=3)
+    pesos = [v["peso_real_kg"] for v in r["volumes"]]
+    assert len(pesos) == 2 and max(pesos) <= 37 and r["totais"]["pecas"] == 140
+    r3 = cartonize(pedido, [m], iteracoes=3, volumes_desejados=3)
+    pesos3 = [v["peso_real_kg"] for v in r3["volumes"]]
+    assert len(pesos3) == 3 and max(pesos3) - min(pesos3) < 1.1   # equilibrados (diferença < 1 peça)
+    r1 = cartonize(pedido, [m], iteracoes=3, volumes_desejados=1)  # 72 kg não cabem em 1 fardo de 37
+    assert r1["ok"] is False and "não comportam" in r1["motivo"]
+
+
+def test_dividir_mantem_produtos_juntos():
+    p = list(CALCAS.values())
+    grupos = _dividir([(p[0], 30), (p[1], 30), (p[2], 30)], 3)
+    assert [[(x.tamanho, q) for x, q in g] for g in grupos] == [[("38", 30)], [("40", 30)], [("42", 30)]]

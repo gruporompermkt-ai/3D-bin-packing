@@ -12,8 +12,17 @@ Embalagens:
                           retangular  conteúdo em bloco (envelope comprimento x largura x altura);
                           cilindrico  conteúdo dentro de um círculo (diâmetro <= menor lado da base);
                           arredondado retângulo com cantos arredondados (raio_canto, em cm);
-                          molde       contorno qualquer (pontos de 0 a 1), ex.: traçado de uma foto.
-                        Arredondado e molde viram uma grade de células de 1 cm (ver moldes.py).
+                          molde       contorno qualquer (pontos de 0 a 1), ex.: traçado de uma foto;
+                          manga       tubo plástico cortado na hora (ver abaixo).
+                        Arredondado, molde e manga viram uma grade de células de 1 cm (ver moldes.py).
+
+Fardo de manga: o rolo é um tubo de largura deitada `manga_cm` (contorno = 2 x manga_cm). A seção
+do fardo é um retângulo de cantos arredondados (raio_canto) cujo contorno é o do tubo, então são
+testadas várias proporções (da quadrada às achatadas). O comprimento é livre (cortado na hora): é o
+que o conteúdo pede, mais `folga_ponta_cm` em cada ponta franzida. O limite é o peso: o pedido é
+dividido em fardos de peso equilibrado (ou no número de fardos que o cliente pedir), mantendo cada
+produto junto sempre que possível. Internamente o tubo é montado "em pé" (eixo do tubo = altura);
+no resultado as medidas e o layout são girados para o fardo deitado: [comprimento, largura, altura].
 
 Vestuário curvável: quando a peça reta não cabe num vão, pode ser curvada a 90 graus (formato L,
 deitada) para ocupar um canto. Um arco é aproximado pelo L.
@@ -73,12 +82,40 @@ class Embalagem:
     custo: Optional[float] = None
     tipo: str = 'caixa'         # 'caixa' ou 'fardo'
     forma: str = 'flexivel'     # fardo: 'flexivel', 'retangular', 'cilindrico', 'arredondado' ou 'molde'
-    raio_canto: float = 0.0     # fardo arredondado: raio dos cantos (cm)
+    raio_canto: float = 0.0     # fardo arredondado/manga: raio dos cantos (cm)
     molde: Optional[list] = None    # fardo molde: [[x, y], ...] de 0 a 1
+    manga_cm: float = 0.0       # fardo de manga: largura do tubo deitado no rolo (cm)
+    folga_ponta_cm: float = 0.0     # fardo de manga: comprimento a mais em cada ponta franzida (cm)
+
+    COMPRIMENTO_MAX_MANGA = 300.0   # cm: "sem limite", só para o empacotador ter um teto
 
     def __post_init__(self):
         if self.tipo == 'fardo' and self.forma == 'cilindrico' and not self.largura:
             self.largura = self.comprimento
+        if self.tipo == 'fardo' and self.forma == 'manga':
+            if self.manga_cm <= 0:
+                raise ValueError('fardo de manga precisa da largura da manga (manga_cm)')
+            maior = max(w for w, _ in self.secoes_manga)
+            self.comprimento = self.largura = maior
+            if not self.altura or self.altura <= 0:
+                self.altura = self.COMPRIMENTO_MAX_MANGA
+
+    @property
+    def secoes_manga(self):
+        '''
+        seções (largura, altura) cujo contorno é o do tubo: 2(L + A) - (8 - 2*pi) r = 2 * manga.
+        Da quadrada à bem achatada; a do fardo da foto (48 x 37, manga 80, r ~6) fica nesse meio.
+        '''
+        perimetro = 2 * self.manga_cm
+        r = max(0.0, self.raio_canto)
+        soma = (perimetro + (8 - 2 * math.pi) * r) / 2          # largura + altura
+        secoes = []
+        for f in (0.5, 0.56, 0.62, 0.68):
+            w = math.floor(soma * f * 10) / 10
+            h = math.floor((soma - w) * 10) / 10
+            if min(w, h) > 2 * r:
+                secoes.append((w, h))
+        return secoes or [(math.floor(soma / 2 * 10) / 10,) * 2]
 
     @property
     def formas(self):
@@ -88,6 +125,12 @@ class Embalagem:
         if self.forma == 'flexivel':
             return ['retangular', 'cilindrico']
         return [self.forma]
+
+    def dims_iniciais(self, formato):
+        ''' medidas em que o empacotador começa (a manga testa todas as seções) '''
+        if formato == 'manga':
+            return [(w, h, self.altura) for w, h in self.secoes_manga]
+        return [(self.comprimento, self.largura, self.altura)]
 
     @property
     def diametro_max(self):
@@ -148,6 +191,10 @@ class Volume:
         if self.cilindrico:
             d = self.diametro_final
             return [d, d, self.altura_final]
+        if self.formato == 'manga':
+            # seção do tubo x comprimento (conteúdo + pontas franzidas); a ordem não muda o volume
+            w, h = self.dims_empacotamento[:2]
+            return [math.ceil(round(w, 6)), math.ceil(round(h, 6)), self.altura_final + 2 * e.folga_ponta_cm]
         if self.formato in ('arredondado', 'molde'):
             # o contorno é o da base em que as peças foram encaixadas (os cantos/curvas dependem dela);
             # a busca do fardo testa bases menores para encolhê-lo
@@ -229,7 +276,7 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True)
     if formato == 'cilindrico':
         d = min(dims[0], dims[1])
         dims = (d, d, dims[2])
-    if formato in ('arredondado', 'molde'):
+    if formato in ('arredondado', 'molde', 'manga'):
         b = Bin(embalagem.codigo, dims, max(capacidade, 0), shape='mask',
                 mask=_mascara(embalagem, formato, dims[0], dims[1]), mask_cell=moldes.CELULA_CM)
     else:
@@ -255,14 +302,14 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True)
 
 
 def _mascara(embalagem, formato, comprimento, largura):
-    if formato == 'arredondado':
+    if formato in ('arredondado', 'manga'):
         return moldes.mascara_arredondada(comprimento, largura, embalagem.raio_canto)
     return moldes.mascara_poligono(comprimento, largura, embalagem.molde)
 
 
 def _contorno(embalagem, formato, comprimento, largura):
     ''' polígono (cm) da seção do fardo nas medidas finais, para o 3D '''
-    if formato == 'arredondado':
+    if formato in ('arredondado', 'manga'):
         return moldes.contorno_arredondado(comprimento, largura, embalagem.raio_canto)
     if formato == 'molde':
         return moldes.contorno_poligono(comprimento, largura, embalagem.molde)
@@ -313,17 +360,75 @@ def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None, formatos=
     formato possível (fardo flexível: retangular e cilíndrico).
     Retorna (Volume, linhas_que_sobraram). Volume vazio = nada coube.
     '''
-    dims = dims or (embalagem.comprimento, embalagem.largura, embalagem.altura)
     melhor = None
     for formato in formatos or embalagem.formas:
-        for est in estrategias(iteracoes):
-            vol, sobra = _pack_strategy(embalagem, dims, linhas, est, formato, compactar)
-            if melhor is None or _score(vol) < _score(melhor[0]):
-                melhor = (vol, sobra)
+        for d in ([dims] if dims else embalagem.dims_iniciais(formato)):
+            for est in estrategias(iteracoes):
+                vol, sobra = _pack_strategy(embalagem, d, linhas, est, formato, compactar)
+                if melhor is None or _score(vol) < _score(melhor[0]):
+                    melhor = (vol, sobra)
     return melhor
 
 
-def _plan_with(embalagem, linhas, catalogo, iteracoes):
+def _peso(linhas):
+    return sum(p.peso_g * q for p, q in linhas)
+
+
+def _dividir(linhas, n):
+    '''
+    divide as linhas em n grupos de peso parecido (alvo = total / n), na ordem das linhas, para
+    que cada produto fique junto sempre que possível
+    '''
+    alvo = _peso(linhas) / n
+    grupos = [[] for _ in range(n)]
+    pesos = [0.0] * n
+    g = 0
+    for p, q in linhas:
+        restante = q
+        while restante > 0:
+            if g < n - 1 and pesos[g] + p.peso_g / 2 > alvo:
+                g += 1
+                continue
+            if g == n - 1:
+                k = restante
+            else:
+                k = max(1, min(restante, math.floor((alvo - pesos[g]) / p.peso_g + 0.5))) if p.peso_g else restante
+            grupos[g].append((p, k))
+            pesos[g] += k * p.peso_g
+            restante -= k
+    return [gr for gr in grupos if gr]
+
+
+def _plan_manga(embalagem, linhas, iteracoes, n_desejado=None):
+    ''' fardos de manga: o peso decide quantos; cada um com o menor comprimento possível '''
+    capacidade = embalagem.peso_max_g - embalagem.tara_g
+    if any(p.peso_g > capacidade for p, _ in linhas):
+        return None
+    total = _peso(linhas)
+    n = n_desejado or max(1, math.ceil(total / capacidade - 1e-9))
+    while True:
+        grupos = _dividir(linhas, n)
+        if all(_peso(g) <= capacidade + 1e-6 for g in grupos):
+            break
+        if n_desejado:
+            raise ValueError('{} fardos não comportam {:.1f} kg com no máximo {:.1f} kg cada'.format(
+                n_desejado, total / 1000, capacidade / 1000))
+        n += 1
+        if n > MAX_VOLUMES:
+            return None
+    volumes = []
+    it_busca = min(iteracoes, 2)
+    for grupo in grupos:
+        atual, sobra = pack_one(embalagem, grupo, it_busca, compactar=False)
+        if sobra or not atual.itens:
+            return None     # não coube nem com o comprimento máximo
+        volumes.append(_fardo_compacto(embalagem, grupo, atual, iteracoes))
+    return volumes
+
+
+def _plan_with(embalagem, linhas, catalogo, iteracoes, n_desejado=None):
+    if embalagem.tipo == 'fardo' and embalagem.forma == 'manga':
+        return _plan_manga(embalagem, linhas, iteracoes, n_desejado)
     volumes = []
     resto = [(p, q) for p, q in linhas if q > 0]
     while resto:
@@ -410,7 +515,9 @@ def _fardo_compacto(fardo, conteudo, atual, iteracoes):
     vol_min = _volume_conteudo(conteudo)
     candidatos = []
     for formato in fardo.formas:
-        if formato == 'cilindrico':
+        if formato == 'manga':
+            bases = fardo.secoes_manga
+        elif formato == 'cilindrico':
             dmax = fardo.diametro_max
             bases = [(d, d) for d in sorted({max(1, math.ceil(dmax * f)) for f in (1, .8, .6)}, reverse=True)]
         else:
@@ -428,20 +535,41 @@ def _fardo_compacto(fardo, conteudo, atual, iteracoes):
             # superior seguro: com paredes flexíveis o fardo final pode ser mais estreito que a base
             lo = max(1, math.ceil(vol_min / area_util))
             hi = int(math.ceil(fardo.altura))
-            _menor_altura(fardo, base, conteudo, lo, hi, it_busca, formato, candidatos)
+            busca = it_busca
+            if formato == 'manga':
+                # o comprimento útil fica entre o volume das peças / área da seção (lo) e ~2,5 x isso
+                hi = min(hi, int(math.ceil(lo * 2.5)) + 2)
+                busca = min(it_busca, 2)
+            _menor_altura(fardo, base, conteudo, lo, hi, busca, formato, candidatos)
 
     # remonta as 3 melhores combinações (base, altura) com todas as iterações e a compactação
     vistos = set()
+    finais = [melhor]
     for _, formato, dims, vol in sorted(candidatos, key=lambda c: c[0]):
         if (formato, dims) in vistos:
             continue
         vistos.add((formato, dims))
-        for candidato in (vol, _cabe(fardo, dims, conteudo, iteracoes, formato)):
-            if candidato and candidato.envelope_cm3 < melhor.envelope_cm3:
-                melhor = candidato
+        finais += [c for c in (vol, _cabe(fardo, dims, conteudo, iteracoes, formato)) if c]
         if len(vistos) == 3:
             break
-    return melhor
+    return _mais_natural(finais)
+
+
+TOLERANCIA_FORMA = 0.03
+
+
+def _mais_natural(volumes):
+    '''
+    o de menor envelope; entre os que ficam a até 3% dele, o de seção mais "quadrada" (a manga e
+    as paredes flexíveis tendem a arredondar; seções muito achatadas não são realistas)
+    '''
+    menor = min(v.envelope_cm3 for v in volumes)
+    perto = [v for v in volumes if v.envelope_cm3 <= menor * (1 + TOLERANCIA_FORMA)]
+
+    def proporcao(v):
+        c, l = v.dimensoes_finais[:2]
+        return max(c, l) / max(min(c, l), 1e-9)
+    return min(perto, key=lambda v: (round(proporcao(v), 2), v.envelope_cm3))
 
 
 def _merge(itens):
@@ -473,6 +601,21 @@ def resumo_volume(v, fator_cubagem):
     peso_real_kg = (v.peso_itens_g + e.tara_g) / 1000
     peso_cubado_kg = volume_m3 * fator_cubagem
     layout = v.layout
+    plano = 'xy'
+    if v.formato == 'manga':
+        # montado em pé (eixo do tubo = z); mostrado deitado: comprimento em x, seção em y-z,
+        # com a folga da ponta franzida antes do conteúdo
+        f = e.folga_ponta_cm
+        w, h = v.dims_empacotamento[:2]
+        contorno = moldes.contorno_arredondado(w, h, e.raio_canto)
+        dims = [v.altura_final + 2 * f, math.ceil(round(w, 6)), math.ceil(round(h, 6))]
+        volume_m3 = dims[0] * dims[1] * dims[2] / 1_000_000
+        volume_real_m3 = moldes.area_poligono(contorno) * dims[0] / 1_000_000
+        peso_cubado_kg = volume_m3 * fator_cubagem
+        eixos = {'z': 'x', 'x': 'y', 'y': 'z', None: None}
+        layout = [dict(q, x=round(q['z'] + f, 2), y=q['x'], z=q['y'], c=q['a'], l=q['c'], a=q['l'],
+                       eixo=eixos[q['eixo']]) for q in layout]
+        plano = 'yz'
     if v.cilindrico:
         # recentra o conteúdo no cilindro final (x, y de 0 até o diâmetro final)
         desloc = (v.dims_empacotamento[0] - dims[0]) / 2
@@ -482,11 +625,14 @@ def resumo_volume(v, fator_cubagem):
         'tipo': e.tipo,
         'forma': v.formato,
         'dimensoes_cm': dims,
-        'max_cm': [e.comprimento, e.largura, e.altura] if e.tipo == 'fardo' else None,
+        'max_cm': [e.comprimento, e.largura, e.altura] if e.tipo == 'fardo' and v.formato != 'manga' else None,
+        'manga_cm': e.manga_cm if v.formato == 'manga' else None,
+        'folga_ponta_cm': e.folga_ponta_cm if v.formato == 'manga' else None,
+        'contorno_plano': plano,
         'altura_max_cm': e.altura if e.tipo == 'fardo' else None,
         'diametro_max_cm': e.diametro_max if v.cilindrico else None,
         'contorno_cm': contorno,
-        'raio_canto_cm': e.raio_canto if v.formato == 'arredondado' else None,
+        'raio_canto_cm': e.raio_canto if v.formato in ('arredondado', 'manga') else None,
         'volume_m3': round(volume_m3, 4),
         'volume_real_m3': round(volume_real_m3, 4),
         'ocupacao_pct': round(v.volume_itens_cm3 / (volume_real_m3 * 1_000_000) * 100, 1) if volume_real_m3 else 0,
@@ -501,18 +647,24 @@ def resumo_volume(v, fator_cubagem):
 
 
 def cartonize(linhas: List[tuple], catalogo: List[Embalagem], fator_cubagem: float = 300.0,
-              iteracoes: int = ITERACOES_PADRAO):
+              iteracoes: int = ITERACOES_PADRAO, volumes_desejados: Optional[int] = None):
     '''
     linhas: [(Produto, quantidade)]
     fator_cubagem: kg por m³ da transportadora (ex.: 300 rodoviário)
     iteracoes: estratégias testadas por volume (mais = mais denso e mais lento)
+    volumes_desejados: número de fardos que o cliente quer (só fardo de manga; peso equilibrado)
     '''
     linhas = [(p, int(q)) for p, q in linhas if q > 0]
     if not catalogo:
         raise ValueError('nenhuma embalagem cadastrada')
     planos = []
+    erros = []
     for emb in catalogo:
-        volumes = _plan_with(emb, copy.deepcopy(linhas), catalogo, iteracoes)
+        try:
+            volumes = _plan_with(emb, copy.deepcopy(linhas), catalogo, iteracoes, volumes_desejados)
+        except ValueError as erro:
+            erros.append('{}: {}'.format(emb.codigo, erro))
+            continue
         if volumes is None:
             continue
         resumo = [resumo_volume(v, fator_cubagem) for v in volumes]
@@ -524,7 +676,8 @@ def cartonize(linhas: List[tuple], catalogo: List[Embalagem], fator_cubagem: flo
             'peso_real_kg': round(sum(r['peso_real_kg'] for r in resumo), 3),
         })
     if not planos:
-        return {'ok': False, 'motivo': 'algum item não cabe em nenhuma embalagem do catálogo', 'volumes': []}
+        motivo = '; '.join(erros) if erros else 'algum item não cabe em nenhuma embalagem do catálogo'
+        return {'ok': False, 'motivo': motivo, 'volumes': []}
 
     usa_custo = all(p['custo_total'] is not None for p in planos)
     planos.sort(key=lambda p: ((p['custo_total'] if usa_custo else p['peso_taxavel_kg']), len(p['volumes'])))

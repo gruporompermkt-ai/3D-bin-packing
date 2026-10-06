@@ -95,14 +95,18 @@ class Item:
 
     def setShape(self, fold_state, quantity):
         ''' set width/height/depth/weight of a stack with `quantity` pieces in the given fold state '''
-        w, h, t, _, _ = self.foldStates()[fold_state]
         nd = self.number_of_decimals
+        # cache shared by the copies of the item (copy.copy keeps the same dict)
+        cache = self.__dict__.setdefault('_shape_cache', {})
+        key = (fold_state, quantity, nd)
+        shape = cache.get(key)
+        if shape is None:
+            w, h, t, _, _ = self.foldStates()[fold_state]
+            shape = cache[key] = (ceil2Decimal(w, nd), ceil2Decimal(h, nd),
+                                  ceil2Decimal(t * quantity, nd), ceil2Decimal(self.unit_weight * quantity, nd))
         self.fold_state = fold_state
         self.quantity = quantity
-        self.width = ceil2Decimal(w, nd)
-        self.height = ceil2Decimal(h, nd)
-        self.depth = ceil2Decimal(t * quantity, nd)
-        self.weight = ceil2Decimal(self.unit_weight * quantity, nd)
+        self.width, self.height, self.depth, self.weight = shape
 
 
     def foldDescription(self):
@@ -403,7 +407,16 @@ class Bin:
                 while k >= 1:
                     piece.setShape(fold_state, k)
                     if not self._inside(pivot, piece.getDimension()):
-                        k -= 1
+                        # the larger the stack, the larger the block: binary search the largest k inside
+                        lo, hi = 0, k - 1
+                        while lo < hi:
+                            mid = (lo + hi + 1) // 2
+                            piece.setShape(fold_state, mid)
+                            if self._inside(pivot, piece.getDimension()):
+                                lo = mid
+                            else:
+                                hi = mid - 1
+                        k = lo
                         continue
                     if self.getTotalWeight() + piece.weight > self.max_weight:
                         k -= 1

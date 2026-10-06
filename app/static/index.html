@@ -104,8 +104,10 @@
       <label>Código<input id="e-codigo" size="8"></label>
       <label>Descrição<input id="e-descricao" size="18"></label>
       <label>Tipo<select id="e-tipo"><option>caixa</option><option>fardo</option></select></label>
-      <label>Forma (fardo)<select id="e-forma"><option value="flexivel">flexível (escolhe a melhor)</option><option value="retangular">retangular</option><option value="cilindrico">cilíndrico</option><option value="arredondado">retângulo arredondado</option><option value="molde">molde (contorno de foto)</option></select></label>
+      <label>Forma (fardo)<select id="e-forma"><option value="flexivel">flexível (escolhe a melhor)</option><option value="retangular">retangular</option><option value="cilindrico">cilíndrico</option><option value="arredondado">retângulo arredondado</option><option value="molde">molde (contorno de foto)</option><option value="manga">manga (tubo do rolo)</option></select></label>
       <label>Raio do canto cm<input id="e-raio_canto" type="number" step="0.5" min="0" value="0"></label>
+      <label>Manga deitada cm<input id="e-manga_cm" type="number" step="0.5" min="0" value="0"></label>
+      <label>Folga por ponta cm<input id="e-folga_ponta_cm" type="number" step="0.5" min="0" value="0"></label>
       <label>Comprimento cm (interno)<input id="e-comprimento" type="number" step="0.1" min="0"></label>
       <label>Largura cm<input id="e-largura" type="number" step="0.1" min="0"></label>
       <label>Altura cm (fardo: máxima)<input id="e-altura" type="number" step="0.1" min="0"></label>
@@ -115,7 +117,7 @@
       <label>Ativa<select id="e-ativo"><option value="1">sim</option><option value="0">não</option></select></label>
       <button class="p" id="e-salvar">Salvar</button>
     </div>
-    <p class="hint">Caixa: medidas internas, fixas. Fardo: paredes flexíveis — informe as medidas MÁXIMAS; as medidas finais são as do conteúdo. Forma flexível testa o bloco retangular e o cilindro (diâmetro até o menor lado da base) e fica com o mais compacto. No cilindro o peso cubado usa o "caixote" Ø × Ø × altura. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
+    <p class="hint">Fardo de manga (o do rolo): informe a largura da manga deitada (80 cm), o raio dos cantos (~6 cm), a folga das pontas franzidas e o peso máximo; a seção sai do contorno do tubo e o comprimento do conteúdo. Caixa: medidas internas, fixas. Fardo: paredes flexíveis — informe as medidas MÁXIMAS; as medidas finais são as do conteúdo. Forma flexível testa o bloco retangular e o cilindro (diâmetro até o menor lado da base) e fica com o mais compacto. No cilindro o peso cubado usa o "caixote" Ø × Ø × altura. O peso máximo é o peso bruto (conteúdo + tara). Com custo em todas, o cálculo escolhe o mais barato; sem custo, o menor peso taxável.</p>
     <div class="row" style="margin-top:8px; align-items:flex-start">
       <label style="flex:1; min-width:260px">Molde: pontos do contorno de 0 a 1, um "x y" por linha (sentido horário ou anti-horário)
         <textarea id="e-molde" placeholder="0,3 0&#10;0,7 0&#10;1 0,3&#10;1 0,7&#10;0,7 1&#10;0,3 1&#10;0 0,7&#10;0 0,3" style="min-height:120px"></textarea></label>
@@ -134,6 +136,7 @@
       <label>Nº do pedido<input id="c-pedido" size="10"></label>
       <label>Fator de cubagem kg/m³<input id="c-fator" type="number" step="1" min="1" value="300"></label>
       <label>Iterações (mais = mais denso, mais lento)<input id="c-iter" type="number" step="1" min="1" max="40" value="8"></label>
+      <label>Nº de fardos (opcional)<input id="c-volumes" type="number" step="1" min="1" max="200" placeholder="pelo peso"></label>
     </div>
     <p class="hint">Uma linha por item: código, tamanho e quantidade (ex.: <code>F2505 38 120</code>). Também aceita colar do Excel.</p>
     <textarea id="c-itens" placeholder="F2505 38 120&#10;F2505 40 80"></textarea>
@@ -225,7 +228,7 @@ $('#imp-btn').onclick = async () => {
 };
 
 // ---------------- embalagens
-const E_FIELDS = ['descricao','tipo','forma','comprimento','largura','altura','peso_max_g','tara_g','custo','raio_canto'];
+const E_FIELDS = ['descricao','tipo','forma','comprimento','largura','altura','peso_max_g','tara_g','custo','raio_canto','manga_cm','folga_ponta_cm'];
 // molde: texto "x y" por linha <-> [[x, y], ...]
 const moldeTexto = m => (m || []).map(p => p.map(v => String(v).replace('.', ',')).join(' ')).join('\n');
 const moldePontos = t => t.split('\n').map(l => l.trim().split(/[\s;]+/).filter(Boolean)).filter(c => c.length >= 2).map(c => [num(c[0]), num(c[1])]);
@@ -250,9 +253,14 @@ function celulaDentro(forma, C, L, r, pts, x, y) {
 function desenharPreview() {
   const cv = $('#e-preview'), g = cv.getContext('2d');
   g.clearRect(0, 0, cv.width, cv.height);
-  const C = num($('#e-comprimento').value), L = num($('#e-largura').value) || C, forma = $('#e-tipo').value === 'fardo' ? $('#e-forma').value : 'retangular';
-  if (!(C > 0 && L > 0)) return;
+  let C = num($('#e-comprimento').value), L = num($('#e-largura').value) || C, forma = $('#e-tipo').value === 'fardo' ? $('#e-forma').value : 'retangular';
   const pts = moldePontos($('#e-molde').value), r = num($('#e-raio_canto').value) || 0;
+  if (forma === 'manga') {
+    // seção "natural" da manga: contorno = 2 x largura deitada (como o fardo da foto, ~48 x 37)
+    const soma = (2 * num($('#e-manga_cm').value) + (8 - 2 * Math.PI) * r) / 2;
+    C = soma * .56; L = soma - C; forma = 'arredondado';
+  }
+  if (!(C > 0 && L > 0)) return;
   if (forma === 'molde' && pts.length < 3) return;
   const cel = Math.max(C, L) / 20;                       // células grandes para enxergar os "tijolos"
   const esc = Math.min((cv.width - 20) / C, (cv.height - 20) / L);
@@ -264,12 +272,12 @@ function desenharPreview() {
     g.globalAlpha = .35; g.fillRect(px, py, cel * esc, cel * esc); g.globalAlpha = 1; g.strokeRect(px, py, cel * esc, cel * esc);
   }
 }
-['#e-comprimento','#e-largura','#e-raio_canto','#e-molde','#e-forma','#e-tipo'].forEach(s => $(s).addEventListener('input', desenharPreview));
+['#e-comprimento','#e-largura','#e-raio_canto','#e-molde','#e-forma','#e-tipo','#e-manga_cm'].forEach(s => $(s).addEventListener('input', desenharPreview));
 async function carregarEmbalagens() {
   const rows = await api('GET', '/api/embalagens');
   $('#e-tabela').innerHTML = '<tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="n">C×L×A cm</th><th class="n">Peso máx. g</th><th class="n">Tara g</th><th class="n">Custo</th><th>Ativa</th><th></th></tr>' +
-    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}${e.tipo === 'fardo' ? ' ' + esc({flexivel: 'flexível', retangular: 'retangular', cilindrico: 'cilíndrico', arredondado: `arredondado (r ${fmt(e.raio_canto,1)})`, molde: `molde (${(e.molde || []).length} pontos)`}[e.forma] || e.forma) : ''}</td>
-      <td class="n">${e.tipo === 'fardo' ? 'até ' : ''}${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
+    rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}${e.tipo === 'fardo' ? ' ' + esc({flexivel: 'flexível', retangular: 'retangular', cilindrico: 'cilíndrico', arredondado: `arredondado (r ${fmt(e.raio_canto,1)})`, molde: `molde (${(e.molde || []).length} pontos)`, manga: `manga ${fmt(e.manga_cm,0)} cm`}[e.forma] || e.forma) : ''}</td>
+      <td class="n">${e.forma === 'manga' && e.tipo === 'fardo' ? `seção pelo contorno de ${fmt(2 * e.manga_cm,0)} cm, comprimento livre` : `${e.tipo === 'fardo' ? 'até ' : ''}${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}`}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
       <td class="n">${fmt(e.tara_g,0)}</td><td class="n">${fmt(e.custo)}</td><td>${e.ativo ? 'sim' : 'não'}</td>
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#e-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
@@ -288,6 +296,8 @@ $('#e-salvar').onclick = async () => {
   E_FIELDS.forEach(k => { const v = $('#e-' + k).value; body[k] = ['descricao','tipo','forma'].includes(k) ? v : (v === '' ? null : num(v)); });
   if (body.forma === 'cilindrico' && body.largura == null) body.largura = body.comprimento;
   if (body.raio_canto == null) body.raio_canto = 0;
+  if (body.manga_cm == null) body.manga_cm = 0;
+  if (body.folga_ponta_cm == null) body.folga_ponta_cm = 0;
   body.molde = body.forma === 'molde' ? moldePontos($('#e-molde').value) : null;
   if (body.tara_g == null) body.tara_g = 0;
   try { await api('PUT', `/api/embalagens/${encodeURIComponent(cod)}`, body); msg('#e-msg', `Salva ${cod.toUpperCase()}`, true); carregarEmbalagens(); }
@@ -299,6 +309,7 @@ function dimTxt(v) {
   const [c, l, a] = v.dimensoes_cm;
   let t = v.forma === 'cilindrico' ? `Ø ${fmt(c,0)} × ${fmt(a,0)} cm` : `${fmt(c,1)} × ${fmt(l,1)} × ${fmt(a,1)} cm`;
   if (v.max_cm) t += `, máx. ${v.max_cm.map(x => fmt(x,0)).join(' × ')}`;
+  if (v.manga_cm) t += `, manga ${fmt(v.manga_cm,0)} cm`;
   return t;
 }
 $('#c-calc').onclick = async () => {
@@ -312,7 +323,7 @@ $('#c-calc').onclick = async () => {
   if (!itens.length) return msg('#c-msg', 'Nenhuma linha válida (código tamanho quantidade)');
   $('#c-msg').textContent = 'Calculando...'; $('#c-msg').className = 'msg';
   try {
-    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null, iteracoes: Math.round(num($('#c-iter').value)) || 8});
+    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null, iteracoes: Math.round(num($('#c-iter').value)) || 8, volumes: Math.round(num($('#c-volumes').value)) || null});
     $('#c-msg').textContent = '';
     const box = $('#c-res'); box.style.display = 'block';
     if (!r.ok) { box.innerHTML = `<p class="msg err">${esc(r.motivo)}</p>`; return; }
@@ -322,7 +333,7 @@ $('#c-calc').onclick = async () => {
       <div><b>${fmt(t.peso_real_kg)} kg</b><span>peso real</span></div><div><b>${fmt(t.peso_taxavel_kg)} kg</b><span>peso taxável</span></div>
       ${t.custo_total != null ? `<div><b>R$ ${fmt(t.custo_total)}</b><span>embalagens</span></div>` : ''}</div>
       <p class="hint">Critério: ${esc(r.criterio)} · fator ${fmt(r.fator_cubagem,0)} kg/m³ · ${r.iteracoes} iterações por volume</p>` +
-      r.volumes.map((v, i) => `<div class="vol"><div class="row" style="justify-content:space-between"><h3>Volume ${i + 1}: ${v.tipo === 'fardo' ? 'fardo ' + ({cilindrico: 'cilíndrico ', arredondado: 'arredondado ', molde: 'molde '}[v.forma] || '') : ''}${esc(v.embalagem)} (${dimTxt(v)})</h3>
+      r.volumes.map((v, i) => `<div class="vol"><div class="row" style="justify-content:space-between"><h3>Volume ${i + 1}: ${v.tipo === 'fardo' ? 'fardo ' + ({cilindrico: 'cilíndrico ', arredondado: 'arredondado ', molde: 'molde ', manga: 'de manga '}[v.forma] || '') : ''}${esc(v.embalagem)} (${dimTxt(v)})</h3>
         <button class="s" data-ver="${i}">Ver 3D</button></div>
         <div class="hint">ocupação ${fmt(v.ocupacao_pct,1)}% · estratégia: ${esc(v.estrategia)} · real ${fmt(v.peso_real_kg)} kg · cubado ${fmt(v.peso_cubado_kg)} kg · taxável ${fmt(v.peso_taxavel_kg)} kg</div>
         <div class="tbl"><table><tr><th>Produto</th><th>Tam.</th><th class="n">Qtd</th><th>Forma</th></tr>
@@ -389,6 +400,18 @@ const viewer = (() => {
       }
       const fundo = new THREE.Mesh(new THREE.CircleGeometry(C / 2, 64), new THREE.MeshLambertMaterial({color: 0xc8a97e, side: THREE.DoubleSide}));
       fundo.rotation.x = -Math.PI / 2; fundo.position.set(C / 2, -0.05, L / 2); raiz.add(fundo);
+    } else if (v.contorno_cm && v.contorno_plano === 'yz') {
+      // fardo de manga deitado: seção (largura x altura) extrudada ao longo do comprimento
+      const pts = v.contorno_cm;   // [largura, altura]
+      for (const x of [0, C]) {
+        raiz.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(x, p[1], p[0]))),
+          new THREE.LineBasicMaterial({color: 0x1d2330})));
+      }
+      const shape = new THREE.Shape(pts.map(p => new THREE.Vector2(-p[0], p[1])));
+      const tubo = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, {depth: C, bevelEnabled: false}),
+        new THREE.MeshLambertMaterial({color: 0x9fb3c8, transparent: true, opacity: .16, side: THREE.DoubleSide, depthWrite: false}));
+      tubo.rotation.y = Math.PI / 2;   // extrusão (z local) -> comprimento (x); -largura (x local) -> z
+      raiz.add(tubo);
     } else if (v.contorno_cm) {
       // retângulo arredondado / molde: seção extrudada na altura do fardo
       const pts = v.contorno_cm;
