@@ -2,9 +2,13 @@
 -- Tabelas e colunas tiradas dos logs do Sisplan:
 --   LogSelect_LOGISTICA24_FATURAMENTO 0_20261006.log  (Relatório de Expedição de Pedidos, TFMRELEXPPED)
 --   LogSelect_MARKETING-2_Marketing_20260903.log      (consulta de faturamento com NOTA.VAL_FRETE)
--- RASCUNHO: ainda não rodado no banco (falta o usuário cubagem_ro). Parâmetros :de e :ate = período.
+-- RASCUNHO: ainda não rodado no banco (usuário estoque_ar_ro, falta liberar as tabelas extras).
+-- Parâmetros :de e :ate = período (rodar mês a mês, com SET statement_timeout = '60s').
 --
--- Regras vistas no log:
+-- Regras vistas no log / confirmadas pelo pessoal:
+--  * Um pedido pode ter vários volumes (caixas e/ou fardos).
+--  * CAIXA_001.DESCRICAO traz medidas e peso da caixa (lidos por app/historico.py).
+--  * NOTA.VAL_FRETE é a COTAÇÃO do frete; o custo real é o do CT-e (tabela ainda não identificada).
 --  * PEDIDO3_001 tem uma linha por item dentro de cada volume; CAIXA = nº do volume (o "CX: 040708"
 --    da etiqueta), TCAIXA = tipo da caixa (CAIXA_001.CODIGO), PESO/PESO_L = peso bruto/líquido do
 --    VOLUME repetido em cada linha dele (o Sisplan faz DISTINCT CAIXA, PESO).
@@ -40,7 +44,7 @@ SELECT n.fatura,
        t.nome                            AS transportadora,
        n.cif,
        n.redesp                          AS cod_redespacho,
-       n.val_frete,
+       n.val_frete                       AS frete_cotacao,
        n.val_produtos,
        n.pesob,
        n.pesol,
