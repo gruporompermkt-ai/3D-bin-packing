@@ -10,3 +10,7 @@ venv
 debug.log
 data/
 .pytest_cache
+
+# histórico extraído do Sisplan e modelos treinados (dados da empresa, fora do git)
+dados/historico/
+dados/modelos/
