@@ -18,15 +18,31 @@ def rectIntersect(item1, item2, x, y):
 
 
 def intersect(item1, item2):
-    return (
-        rectIntersect(item1, item2, Axis.WIDTH, Axis.HEIGHT) and
-        rectIntersect(item1, item2, Axis.HEIGHT, Axis.DEPTH) and
-        rectIntersect(item1, item2, Axis.WIDTH, Axis.DEPTH)
-    )
+    '''
+    True when the boxes overlap with positive volume (touching faces do not count).
+    Same result as the three rectIntersect projections, computed in float (the Decimal
+    arithmetic was the bottleneck of the packer); 1e-9 absorbs float noise.
+    '''
+    d1 = item1.getDimension()
+    d2 = item2.getDimension()
+    p1 = item1.position
+    p2 = item2.position
+    for k in (0, 1, 2):
+        a0 = float(p1[k])
+        b0 = float(p2[k])
+        if not (a0 < b0 + float(d2[k]) - 1e-9 and b0 < a0 + float(d1[k]) - 1e-9):
+            return False
+    return True
+
+
+_LIMITS = {}
 
 
 def getLimitNumberOfDecimals(number_of_decimals):
-    return Decimal('1.{}'.format('0' * number_of_decimals))
+    limit = _LIMITS.get(number_of_decimals)
+    if limit is None:
+        limit = _LIMITS[number_of_decimals] = Decimal('1.{}'.format('0' * number_of_decimals))
+    return limit
 
 
 def set2Decimal(value, number_of_decimals=0):

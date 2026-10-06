@@ -294,3 +294,32 @@ def test_fardo_flexivel_escolhe_formato():
     assert v["forma"] in ("retangular", "cilindrico")
     so_ret = cartonize([(F2505_38, 30)], [Embalagem("R", 60, 60, 100, 30000, tipo="fardo", forma="retangular")], iteracoes=3)
     assert v["volume_m3"] <= so_ret["volumes"][0]["volume_m3"] + 1e-9
+
+
+# ---------------------------------------------------------------- compactação do topo (fardo)
+def test_compactacao_deita_as_pecas_do_topo():
+    # caso real: 69 x F2505/40 no fardo 002 (30 x 40 x até 150) com a estratégia "em pé (outro lado)
+    # primeiro": a última pilha (9 calças) ficava em pé no topo -> 138 cm; deitada o fardo cai para 121
+    from py3dbp import main as core
+    from py3dbp.cartonizer import _pack_strategy, estrategias
+    p40 = Produto("F2505", "40", 34.5, 26.67, 2.2, 506.33, 1, 0.95)
+    emb = Embalagem("002", 30, 40, 150, 35000, tipo="fardo", forma="retangular")
+    est = [e for e in estrategias(3) if e[0] == "em pé (outro lado) primeiro"][0]
+    original = core.Bin.compactTop
+    try:
+        core.Bin.compactTop = lambda self, *a, **k: None
+        antes, _ = _pack_strategy(emb, (30, 40, 150), [(p40, 69)], est, "retangular")
+    finally:
+        core.Bin.compactTop = original
+    depois, _ = _pack_strategy(emb, (30, 40, 150), [(p40, 69)], est, "retangular")
+    assert antes.pecas == depois.pecas == 69
+    assert antes.dimensoes_finais[2] == 138
+    assert depois.dimensoes_finais[2] == 121
+    layout_valido(depois.layout, (30, 40, 150))
+
+
+def test_mais_iteracoes_nunca_piora():
+    p40 = Produto("F2505", "40", 34.5, 26.67, 2.2, 506.33, 1, 0.95)
+    emb = Embalagem("002", 30, 40, 150, 35000, tipo="fardo", forma="retangular")
+    vols = [cartonize([(p40, 69)], [emb], iteracoes=n)["volumes"][0]["volume_m3"] for n in (1, 3, 8)]
+    assert vols[2] <= vols[1] <= vols[0]

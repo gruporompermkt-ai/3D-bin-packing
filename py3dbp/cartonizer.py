@@ -211,7 +211,7 @@ def estrategias(n):
     return out
 
 
-def _pack_strategy(embalagem, dims, linhas, estrategia, formato):
+def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True):
     nome, ordem, dobrar_primeiro, maiores_primeiro = estrategia
     packer = Packer()
     capacidade = embalagem.peso_max_g - embalagem.tara_g
@@ -227,10 +227,22 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato):
         packer.addItem(it)
     packer.pack(bigger_first=maiores_primeiro, distribute_items=True, fix_point=True, check_stable=True,
                 support_surface_ratio=0.75, number_of_decimals=NUMBER_OF_DECIMALS)
+    sobra = _remaining(packer.unfit_items)
+    vol = _volume_de(b.items, embalagem, dims, nome, formato)
+    if embalagem.tipo == 'fardo' and compactar:
+        # no fardo as medidas acompanham o conteúdo: reacomoda as pilhas do topo para encolhê-lo.
+        # Fica a versão compactada só se ela for melhor já com as medidas finais arredondadas.
+        b.compactTop()
+        compacto = _volume_de(b.items, embalagem, dims, nome + ' + compactação do topo', formato)
+        if _score(compacto) < _score(vol):
+            vol = compacto
+    return vol, sobra
 
+
+def _volume_de(items, embalagem, dims, nome, formato):
     vol = Volume(embalagem, dims_empacotamento=tuple(dims), estrategia=nome, formato=formato)
     agrupado = {}
-    for it in b.items:
+    for it in items:
         p = it.sku
         forma = it.foldDescription() if it.is_stack else 'rígido'
         if it.bend:
@@ -253,16 +265,19 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato):
     for (sku, forma), qtd in agrupado.items():
         codigo, tamanho = sku.split('/', 1)
         vol.itens.append({'sku': sku, 'codigo': codigo, 'tamanho': tamanho, 'qtd': qtd, 'forma': forma})
-    return vol, _remaining(packer.unfit_items)
+    return vol
 
 
 def _score(vol):
-    ''' menor é melhor: mais peças, mais volume, menor envelope cobrado, conteúdo mais baixo '''
+    '''
+    menor é melhor: mais peças, menor envelope cobrado, conteúdo mais baixo.
+    (o volume das peças não entra: ele só varia pelo arredondamento entre peça aberta e dobrada)
+    '''
     topo = max((q['z'] + q['a'] for q in vol.layout), default=0)
-    return (-vol.pecas, -round(vol.volume_itens_cm3, 1), vol.envelope_cm3, topo)
+    return (-vol.pecas, vol.envelope_cm3, topo)
 
 
-def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None, formatos=None):
+def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None, formatos=None, compactar=True):
     '''
     Enche UMA embalagem com o que couber das linhas, testando `iteracoes` estratégias em cada
     formato possível (fardo flexível: retangular e cilíndrico).
@@ -272,7 +287,7 @@ def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None, formatos=
     melhor = None
     for formato in formatos or embalagem.formas:
         for est in estrategias(iteracoes):
-            vol, sobra = _pack_strategy(embalagem, dims, linhas, est, formato)
+            vol, sobra = _pack_strategy(embalagem, dims, linhas, est, formato, compactar)
             if melhor is None or _score(vol) < _score(melhor[0]):
                 melhor = (vol, sobra)
     return melhor
@@ -308,29 +323,40 @@ def _plan_with(embalagem, linhas, catalogo, iteracoes):
     return volumes
 
 
-def _cabe(fardo, dims, conteudo, iteracoes, formato):
-    vol, sobra = pack_one(fardo, conteudo, iteracoes, dims, [formato])
+def _cabe(fardo, dims, conteudo, iteracoes, formato, compactar=True):
+    vol, sobra = pack_one(fardo, conteudo, iteracoes, dims, [formato], compactar)
     return vol if (vol.itens and not sobra) else None
 
 
-def _menor_altura(fardo, base, conteudo, lo, hi, iteracoes, formato):
+def _menor_altura(fardo, base, conteudo, lo, hi, iteracoes, formato, candidatos):
     '''
-    busca binária (cm inteiro) da menor altura entre lo e hi que comporta todo o conteúdo;
-    None se nem hi comporta
+    busca binária (cm inteiro) da menor altura entre lo e hi que comporta todo o conteúdo.
+    Toda montagem que coube vai para `candidatos` como (envelope, formato, dims, volume): com
+    paredes flexíveis a mais baixa nem sempre é a menor (pode sair mais larga).
+    Montagens rápidas (sem compactação do topo): a compactação não muda o que cabe.
     '''
     if lo > hi:
-        return None
-    melhor = _cabe(fardo, (base[0], base[1], hi), conteudo, iteracoes, formato)
-    if melhor is None:
-        return None
+        return
+
+    def testa(h):
+        dims = (base[0], base[1], h)
+        vol = _cabe(fardo, dims, conteudo, iteracoes, formato, compactar=False)
+        if vol:
+            candidatos.append((vol.envelope_cm3, formato, dims, vol))
+        return vol
+
+    topo = hi
+    if not testa(hi):
+        return
     while lo < hi:
         meio = (lo + hi) // 2
-        vol = _cabe(fardo, (base[0], base[1], meio), conteudo, iteracoes, formato)
-        if vol:
-            melhor, hi = vol, meio
+        if testa(meio):
+            hi = meio
         else:
             lo = meio + 1
-    return melhor
+    # alturas logo acima da mínima costumam dar montagens mais estreitas
+    for h in range(hi + 1, min(hi + 2, topo) + 1):
+        testa(h)
 
 
 def _volume_conteudo(conteudo):
@@ -347,39 +373,41 @@ def _fardo_compacto(fardo, conteudo, atual, iteracoes):
       cilíndrico (flexível): diâmetros decrescentes x menor altura para cada um.
     '''
     melhor = atual
-    # a busca testa muitas alturas: usa poucas estratégias nela e todas só na montagem final
+    # a busca testa muitas alturas: usa poucas estratégias e nenhuma compactação nela; as melhores
+    # combinações são remontadas no fim com todas as iterações e a compactação do topo
     it_busca = min(iteracoes, 3)
     C, L = fardo.comprimento, fardo.largura
     vol_min = _volume_conteudo(conteudo)
-    melhor_env = atual.envelope_cm3
-    escolhido = None
+    candidatos = []
     for formato in fardo.formas:
         if formato == 'cilindrico':
             dmax = fardo.diametro_max
-            bases = [(d, d) for d in sorted({max(1, math.ceil(dmax * f)) for f in (1, .85, .7, .55)}, reverse=True)]
+            bases = [(d, d) for d in sorted({max(1, math.ceil(dmax * f)) for f in (1, .8, .6)}, reverse=True)]
         else:
             # paredes flexíveis: bases menores que a máxima também valem
             bases = sorted({(max(1, math.ceil(C * fx)), max(1, math.ceil(L * fy)))
-                            for fx in (1, .8, .6) for fy in (1, .8, .6)}, key=lambda b: -b[0] * b[1])
+                            for fx, fy in ((1, 1), (.8, .8), (1, .6), (.6, 1), (.6, .6))},
+                           key=lambda b: -b[0] * b[1])
         for base in bases:
             area = base[0] * base[1]
             area_util = math.pi * (base[0] / 2) ** 2 if formato == 'cilindrico' else area
-            # poda: abaixo de lo o conteúdo não cabe; acima de hi o envelope já perde do melhor
+            # poda: abaixo de lo o conteúdo não cabe (volume das peças / área da base). Não há limite
+            # superior seguro: com paredes flexíveis o fardo final pode ser mais estreito que a base
             lo = max(1, math.ceil(vol_min / area_util))
-            hi = min(int(math.ceil(fardo.altura)), math.floor(melhor_env / area))
-            vol = _menor_altura(fardo, base, conteudo, lo, hi, it_busca, formato)
-            if vol is None:
-                continue
-            if vol.envelope_cm3 < melhor_env:
-                melhor_env = vol.envelope_cm3
-                escolhido = (formato, vol)
-    if escolhido:
-        formato, vol = escolhido
-        final = _cabe(fardo, vol.dims_empacotamento[:2] + (int(math.ceil(vol.altura_final)),),
-                      conteudo, iteracoes, formato) or vol
-        for candidato in (final, vol):
-            if candidato.envelope_cm3 < melhor.envelope_cm3:
+            hi = int(math.ceil(fardo.altura))
+            _menor_altura(fardo, base, conteudo, lo, hi, it_busca, formato, candidatos)
+
+    # remonta as 3 melhores combinações (base, altura) com todas as iterações e a compactação
+    vistos = set()
+    for _, formato, dims, vol in sorted(candidatos, key=lambda c: c[0]):
+        if (formato, dims) in vistos:
+            continue
+        vistos.add((formato, dims))
+        for candidato in (vol, _cabe(fardo, dims, conteudo, iteracoes, formato)):
+            if candidato and candidato.envelope_cm3 < melhor.envelope_cm3:
                 melhor = candidato
+        if len(vistos) == 3:
+            break
     return melhor
 
 

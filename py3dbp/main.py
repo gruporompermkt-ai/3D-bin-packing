@@ -80,12 +80,16 @@ class Item:
         All shapes of ONE piece, least folded first:
         [(w, h, thickness_in_stack, folds_on_length, folds_on_width), ...]
         '''
+        cache = self.__dict__.get('_fold_states')
+        if cache is not None:
+            return cache
         W, H, D = self.piece_whd
         states = []
         for n in range(self.fold_count + 1):
             for a in range(n, -1, -1):
                 b = n - a
                 states.append((W / 2 ** a, H / 2 ** b, D * 2 ** n * self.compress_ratio, a, b))
+        self._fold_states = states
         return states
 
 
@@ -519,6 +523,150 @@ class Bin:
         if not placed.is_stack:
             placed.quantity = 1
         self.items.append(placed)
+
+
+    # ------------------------------------------------------------------ top compaction
+    def _top(self, item):
+        return float(item.position[2]) + float(item.getDimension()[2])
+
+
+    def contentTop(self):
+        return max((self._top(i) for i in self.items), default=0.0)
+
+
+    def contentExtents(self):
+        ''' (x, y, z) extent of the content '''
+        ex = ey = ez = 0.0
+        for i in self.items:
+            w, h, d = (float(v) for v in i.getDimension())
+            x, y, z = (float(v) for v in i.position)
+            ex, ey, ez = max(ex, x + w), max(ey, y + h), max(ez, z + d)
+        return ex, ey, ez
+
+
+    def contentEnvelope(self):
+        '''
+        volume of the box around the content: what a flexible container (bale) is charged by.
+        In a cylinder the footprint is fixed by the circle, so only the height counts.
+        '''
+        ex, ey, ez = self.contentExtents()
+        if self.shape == 'cylinder':
+            return float(self.width) ** 2 * ez
+        return ex * ey * ez
+
+
+    def _rebuildFitItems(self):
+        self.fit_items = np.array([[0,float(self.width),0,float(self.height),0,0]])
+        for it in self.items:
+            w, h, d = it.getDimension()
+            x, y, z = (float(v) for v in it.position)
+            self.fit_items = np.append(self.fit_items, np.array([[x,x+float(w),y,y+float(h),z,z+float(d)]]), axis=0)
+
+
+    def _shapes(self, item):
+        ''' every shape the item may take: rotations (and, for stacks, fold states) keeping its quantity '''
+        if item.is_stack:
+            rotations = RotationType.ALL if item.updown else RotationType.Notupdown
+            for fold_state in range(len(item.foldStates())):
+                for rotation in rotations:
+                    c = copy.copy(item)
+                    c.rotation_type = rotation
+                    c.setShape(fold_state, item.quantity)
+                    yield c
+        else:
+            for rotation in (RotationType.ALL if item.updown else RotationType.Notupdown):
+                c = copy.copy(item)
+                c.rotation_type = rotation
+                yield c
+
+
+    def _pivots(self):
+        nd = self.number_of_decimals
+        pivots = [[set2Decimal(0, nd)] * 3] + list(self.seedPivots())
+        for ib in self.items:
+            w, h, d = ib.getDimension()
+            x, y, z = ib.position
+            pivots += [[x + w, y, z], [x, y + h, z], [x, y, z + d]]
+        return pivots
+
+
+    def _placeLowest(self, item):
+        '''
+        best fit: put the item where the content envelope grows least, then where its top ends
+        lowest (then nearest to the origin)
+        '''
+        best = None
+        ex, ey, ez = self.contentExtents()
+        cyl = self.shape == 'cylinder'
+        for shape in self._shapes(item):
+            dims = shape.getDimension()
+            for pivot in self._pivots():
+                if not self._inside(pivot, dims):
+                    continue
+                shape.position = pivot
+                if self._collides(shape):
+                    continue
+                pos = self._settle(shape, pivot, dims)
+                if pos is None or not self._inside(pos, dims):
+                    continue
+                top = float(pos[2]) + float(dims[2])
+                env = (1.0 if cyl else max(ex, float(pos[0]) + float(dims[0])) * max(ey, float(pos[1]) + float(dims[1]))) \
+                    * max(ez, top)
+                key = (round(env, 3), top, float(pos[2]), float(pos[1]), float(pos[0]))
+                if best is None or key < best[0]:
+                    best = (key, copy.copy(shape), dims)
+        if best is None:
+            return False
+        self._commit(best[1], best[2])
+        return True
+
+
+    def compactTop(self, max_rounds=6):
+        '''
+        Shrink the content (useful when the container follows the content, e.g. bales).
+        The stacks that define the top are taken out and put back where the content envelope grows
+        least, in any allowed shape, whole or split in two. Repeats while the envelope (or, with the
+        same envelope, the top) goes down; a round that does not improve is undone.
+        '''
+        for _ in range(max_rounds):
+            if not self.items:
+                return
+            top = self.contentTop()
+            envelope = self.contentEnvelope()
+            tops = [i for i in self.items if abs(self._top(i) - top) < 1e-6]
+            if any(i.bend for i in tops) or len(tops) == len(self.items) and len(tops) == 1 and not tops[0].is_stack:
+                return
+            saved_items, saved_fit = self.items, self.fit_items
+            rest = [i for i in self.items if all(i is not t for t in tops)]
+            best = None
+            for split in (False, True):
+                self.items = list(rest)
+                self._rebuildFitItems()
+                ok = True
+                for it in sorted(tops, key=lambda i: float(i.getVolume()), reverse=True):
+                    parts = [it]
+                    if split and it.is_stack and it.quantity >= 2:
+                        first = it.quantity - it.quantity // 2
+                        parts = []
+                        for q in (first, it.quantity - first):
+                            c = copy.copy(it)
+                            c.setShape(it.fold_state, q)
+                            parts.append(c)
+                    for part in parts:
+                        if not self._placeLowest(part):
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                if not ok:
+                    continue
+                score = (round(self.contentEnvelope(), 3), round(self.contentTop(), 6))
+                if score < (round(envelope, 3), round(top, 6) - 1e-6) and (best is None or score < best[0]):
+                    best = (score, self.items, self.fit_items)
+            if best is None:
+                self.items, self.fit_items = saved_items, saved_fit
+                return
+            _, self.items, self.fit_items = best
 
 
     def checkDepth(self,unfix_point):
