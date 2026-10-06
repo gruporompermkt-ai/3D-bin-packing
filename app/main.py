@@ -2,6 +2,7 @@
 
 Unidades: centímetros e gramas. Compressão de 0 a 1 (1 = incomprimível), aplicada só na espessura.
 """
+import json
 import os
 import re
 from contextlib import asynccontextmanager
@@ -12,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from py3dbp import moldes
 from py3dbp.cartonizer import ITERACOES_PADRAO, Embalagem, Produto, cartonize
 
 from . import db
@@ -45,7 +47,9 @@ class ProdutoIn(BaseModel):
 class EmbalagemIn(BaseModel):
     descricao: str = ""
     tipo: Literal["caixa", "fardo"] = "caixa"
-    forma: Literal["flexivel", "retangular", "cilindrico"] = "flexivel"
+    forma: Literal["flexivel", "retangular", "cilindrico", "arredondado", "molde"] = "flexivel"
+    raio_canto: float = Field(0, ge=0, description="cm, fardo arredondado")
+    molde: Optional[List[List[float]]] = Field(None, description="fardo molde: [[x, y], ...] de 0 a 1")
     comprimento: float = Field(gt=0, description="cm, interno")
     largura: Optional[float] = Field(None, gt=0, description="cm; ignorada no fardo cilíndrico")
     altura: float = Field(gt=0)
@@ -159,10 +163,16 @@ def importar(dados: ImportarIn):
 
 
 # ---------------------------------------------------------------- embalagens
+def _embalagem_dict(r):
+    d = dict(r)
+    d["molde"] = json.loads(d["molde"]) if d.get("molde") else None
+    return d
+
+
 @app.get("/api/embalagens")
 def listar_embalagens():
     with db.conectar() as con:
-        return [dict(r) for r in con.execute("SELECT * FROM embalagens ORDER BY comprimento*largura*altura")]
+        return [_embalagem_dict(r) for r in con.execute("SELECT * FROM embalagens ORDER BY comprimento*largura*altura")]
 
 
 @app.put("/api/embalagens/{codigo}")
@@ -173,16 +183,25 @@ def salvar_embalagem(codigo: str, e: EmbalagemIn):
     largura = e.largura if e.largura is not None or forma != "cilindrico" else e.comprimento  # cilindro sem largura: diâmetro = comprimento
     if largura is None:
         raise HTTPException(422, "informe a largura")
+    molde = None
+    if forma == "molde":
+        try:
+            moldes.validar_molde(e.molde)
+        except (ValueError, TypeError) as erro:
+            raise HTTPException(422, f"molde inválido: {erro}")
+        molde = json.dumps(e.molde)
     with db.conectar() as con:
         con.execute(
-            """INSERT INTO embalagens (codigo, descricao, tipo, forma, comprimento, largura, altura, peso_max_g, tara_g, custo, ativo)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            """INSERT INTO embalagens (codigo, descricao, tipo, forma, comprimento, largura, altura, peso_max_g, tara_g, custo, ativo,
+                                     raio_canto, molde)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(codigo) DO UPDATE SET descricao=excluded.descricao, tipo=excluded.tipo, forma=excluded.forma,
+                 raio_canto=excluded.raio_canto, molde=excluded.molde,
                  comprimento=excluded.comprimento, largura=excluded.largura, altura=excluded.altura,
                  peso_max_g=excluded.peso_max_g, tara_g=excluded.tara_g, custo=excluded.custo, ativo=excluded.ativo,
                  atualizado_em=datetime('now','localtime')""",
             (_norm(codigo), e.descricao, e.tipo, forma, e.comprimento, largura, e.altura, e.peso_max_g, e.tara_g, e.custo,
-             int(e.ativo)))
+             int(e.ativo), e.raio_canto if forma == "arredondado" else 0, molde))
     return {"ok": True}
 
 
@@ -214,7 +233,8 @@ def calcular(pedido: PedidoIn):
             raise HTTPException(422, {"mensagem": "produtos sem cadastro", "produtos": faltando})
         rows = con.execute("SELECT * FROM embalagens WHERE ativo=1").fetchall()
     catalogo = [Embalagem(r["codigo"], r["comprimento"], r["largura"], r["altura"], r["peso_max_g"], r["tara_g"],
-                          r["custo"], r["tipo"], r["forma"]) for r in rows]
+                          r["custo"], r["tipo"], r["forma"], r["raio_canto"] or 0,
+                          json.loads(r["molde"]) if r["molde"] else None) for r in rows]
     if pedido.embalagens:
         quero = {_norm(c) for c in pedido.embalagens}
         catalogo = [e for e in catalogo if e.codigo in quero]

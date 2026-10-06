@@ -112,3 +112,25 @@ def test_embalagem_cilindrica_usa_diametro(client):
 def test_caixa_sem_largura_e_rejeitada(client):
     r = client.put("/api/embalagens/CX", json={"comprimento": 60, "altura": 40, "peso_max_g": 30000})
     assert r.status_code == 422
+
+
+def test_embalagem_molde_e_arredondada(client):
+    octo = [[.3, 0], [.7, 0], [1, .3], [1, .7], [.7, 1], [.3, 1], [0, .7], [0, .3]]
+    r = client.put("/api/embalagens/OCT", json={"tipo": "fardo", "forma": "molde", "comprimento": 40, "largura": 40,
+                                                 "altura": 80, "peso_max_g": 30000, "molde": octo})
+    assert r.status_code == 200, r.text
+    r = client.put("/api/embalagens/ARR", json={"tipo": "fardo", "forma": "arredondado", "raio_canto": 8,
+                                                 "comprimento": 40, "largura": 30, "altura": 80, "peso_max_g": 30000})
+    assert r.status_code == 200, r.text
+    emb = {e["codigo"]: e for e in client.get("/api/embalagens").json()}
+    assert emb["OCT"]["molde"] == octo and emb["ARR"]["raio_canto"] == 8
+    r = client.put("/api/embalagens/RUIM", json={"tipo": "fardo", "forma": "molde", "comprimento": 40, "largura": 40,
+                                                  "altura": 80, "peso_max_g": 30000, "molde": [[0, 0], [1, 1]]})
+    assert r.status_code == 422
+    client.put("/api/produtos/F1078/P", json={"comprimento": 16, "largura": 16, "espessura": 7, "peso_g": 260,
+                                               "compressao": 0.6})
+    r = client.post("/api/cubagem", json={"itens": [{"codigo": "F1078", "tamanho": "P", "quantidade": 12}],
+                                          "embalagens": ["OCT"], "iteracoes": 2})
+    assert r.status_code == 200, r.text
+    v = r.json()["volumes"][0]
+    assert v["forma"] == "molde" and v["contorno_cm"]

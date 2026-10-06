@@ -8,9 +8,12 @@ Embalagens:
   caixa                 medidas fixas.
   fardo                 paredes flexíveis: as medidas finais são as do conteúdo, até as máximas do
                         cadastro. Forma:
-                          flexivel   (padrão) testa retangular e cilíndrico e fica com o mais compacto;
-                          retangular conteúdo em bloco (envelope comprimento x largura x altura);
-                          cilindrico conteúdo dentro de um círculo (diâmetro <= menor lado da base).
+                          flexivel    (padrão) testa retangular e cilíndrico e fica com o mais compacto;
+                          retangular  conteúdo em bloco (envelope comprimento x largura x altura);
+                          cilindrico  conteúdo dentro de um círculo (diâmetro <= menor lado da base);
+                          arredondado retângulo com cantos arredondados (raio_canto, em cm);
+                          molde       contorno qualquer (pontos de 0 a 1), ex.: traçado de uma foto.
+                        Arredondado e molde viram uma grade de células de 1 cm (ver moldes.py).
 
 Vestuário curvável: quando a peça reta não cabe num vão, pode ser curvada a 90 graus (formato L,
 deitada) para ocupar um canto. Um arco é aproximado pelo L.
@@ -30,6 +33,7 @@ import random
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from . import moldes
 from .constants import RotationType
 from .main import Bin, Item, Packer
 
@@ -68,7 +72,9 @@ class Embalagem:
     tara_g: float = 0.0
     custo: Optional[float] = None
     tipo: str = 'caixa'         # 'caixa' ou 'fardo'
-    forma: str = 'flexivel'     # fardo: 'flexivel', 'retangular' ou 'cilindrico'
+    forma: str = 'flexivel'     # fardo: 'flexivel', 'retangular', 'cilindrico', 'arredondado' ou 'molde'
+    raio_canto: float = 0.0     # fardo arredondado: raio dos cantos (cm)
+    molde: Optional[list] = None    # fardo molde: [[x, y], ...] de 0 a 1
 
     def __post_init__(self):
         if self.tipo == 'fardo' and self.forma == 'cilindrico' and not self.largura:
@@ -103,7 +109,7 @@ class Volume:
     # posição de cada pilha/item, na ordem de montagem (de baixo para cima)
     layout: list = field(default_factory=list)
     estrategia: str = ''
-    formato: str = 'caixa'                      # 'caixa', 'retangular' ou 'cilindrico'
+    formato: str = 'caixa'                      # 'caixa', 'retangular', 'cilindrico', 'arredondado', 'molde'
 
     @property
     def cilindrico(self):
@@ -142,6 +148,11 @@ class Volume:
         if self.cilindrico:
             d = self.diametro_final
             return [d, d, self.altura_final]
+        if self.formato in ('arredondado', 'molde'):
+            # o contorno é o da base em que as peças foram encaixadas (os cantos/curvas dependem dela);
+            # a busca do fardo testa bases menores para encolhê-lo
+            c, l = self.dims_empacotamento[:2]
+            return [math.ceil(round(c, 6)), math.ceil(round(l, 6)), self.altura_final]
         if not self.layout:
             return [e.comprimento, e.largura, e.altura]
         # paredes flexíveis: o fardo fica do tamanho do conteúdo
@@ -218,8 +229,12 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True)
     if formato == 'cilindrico':
         d = min(dims[0], dims[1])
         dims = (d, d, dims[2])
-    b = Bin(embalagem.codigo, dims, max(capacidade, 0),
-            shape='cylinder' if formato == 'cilindrico' else 'box')
+    if formato in ('arredondado', 'molde'):
+        b = Bin(embalagem.codigo, dims, max(capacidade, 0), shape='mask',
+                mask=_mascara(embalagem, formato, dims[0], dims[1]), mask_cell=moldes.CELULA_CM)
+    else:
+        b = Bin(embalagem.codigo, dims, max(capacidade, 0),
+                shape='cylinder' if formato == 'cilindrico' else 'box')
     b.stack_rotations = ordem
     b.fold_first = dobrar_primeiro
     packer.addBin(b)
@@ -237,6 +252,21 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True)
         if _score(compacto) < _score(vol):
             vol = compacto
     return vol, sobra
+
+
+def _mascara(embalagem, formato, comprimento, largura):
+    if formato == 'arredondado':
+        return moldes.mascara_arredondada(comprimento, largura, embalagem.raio_canto)
+    return moldes.mascara_poligono(comprimento, largura, embalagem.molde)
+
+
+def _contorno(embalagem, formato, comprimento, largura):
+    ''' polígono (cm) da seção do fardo nas medidas finais, para o 3D '''
+    if formato == 'arredondado':
+        return moldes.contorno_arredondado(comprimento, largura, embalagem.raio_canto)
+    if formato == 'molde':
+        return moldes.contorno_poligono(comprimento, largura, embalagem.molde)
+    return None
 
 
 def _volume_de(items, embalagem, dims, nome, formato):
@@ -384,9 +414,12 @@ def _fardo_compacto(fardo, conteudo, atual, iteracoes):
             dmax = fardo.diametro_max
             bases = [(d, d) for d in sorted({max(1, math.ceil(dmax * f)) for f in (1, .8, .6)}, reverse=True)]
         else:
-            # paredes flexíveis: bases menores que a máxima também valem
-            bases = sorted({(max(1, math.ceil(C * fx)), max(1, math.ceil(L * fy)))
-                            for fx, fy in ((1, 1), (.8, .8), (1, .6), (.6, 1), (.6, .6))},
+            # paredes flexíveis: bases menores que a máxima também valem. No arredondado/molde o
+            # fardo fica com o contorno da base inteira, então vale testar mais tamanhos
+            fatores = [(1, 1), (.8, .8), (1, .6), (.6, 1), (.6, .6)]
+            if formato in ('arredondado', 'molde'):
+                fatores += [(.9, .9), (.7, .7), (.9, .7), (.7, .9)]
+            bases = sorted({(max(1, math.ceil(C * fx)), max(1, math.ceil(L * fy))) for fx, fy in fatores},
                            key=lambda b: -b[0] * b[1])
         for base in bases:
             area = base[0] * base[1]
@@ -430,8 +463,11 @@ def resumo_volume(v, fator_cubagem):
     e = v.embalagem
     dims = v.dimensoes_finais
     volume_m3 = dims[0] * dims[1] * dims[2] / 1_000_000          # envelope (caixote em volta do fardo)
+    contorno = _contorno(e, v.formato, dims[0], dims[1])
     if v.cilindrico:
         volume_real_m3 = math.pi * (dims[0] / 2) ** 2 * dims[2] / 1_000_000
+    elif contorno:
+        volume_real_m3 = moldes.area_poligono(contorno) * dims[2] / 1_000_000
     else:
         volume_real_m3 = volume_m3
     peso_real_kg = (v.peso_itens_g + e.tara_g) / 1000
@@ -449,6 +485,8 @@ def resumo_volume(v, fator_cubagem):
         'max_cm': [e.comprimento, e.largura, e.altura] if e.tipo == 'fardo' else None,
         'altura_max_cm': e.altura if e.tipo == 'fardo' else None,
         'diametro_max_cm': e.diametro_max if v.cilindrico else None,
+        'contorno_cm': contorno,
+        'raio_canto_cm': e.raio_canto if v.formato == 'arredondado' else None,
         'volume_m3': round(volume_m3, 4),
         'volume_real_m3': round(volume_real_m3, 4),
         'ocupacao_pct': round(v.volume_itens_cm3 / (volume_real_m3 * 1_000_000) * 100, 1) if volume_real_m3 else 0,

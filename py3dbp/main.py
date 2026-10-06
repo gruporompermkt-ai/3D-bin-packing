@@ -172,16 +172,31 @@ class Item:
 
 class Bin:
 
-    def __init__(self, partno, WHD, max_weight,corner=0,put_type=1,shape='box'):
+    def __init__(self, partno, WHD, max_weight,corner=0,put_type=1,shape='box',mask=None,mask_cell=1.0):
         '''
         shape='cylinder': W is the diameter (H must be equal to W), D the height. Items must fit
-        inside the circle. Packing strategies can be tuned with:
+        inside the circle.
+        shape='mask'    : the floor is a grid of square cells of `mask_cell` (cm); `mask[i][j]` says
+        whether the cell i (along W) x j (along H) belongs to the container. An item fits when every
+        cell under its footprint (even partially covered) belongs to it. Any outline (rounded
+        rectangle, outline traced from a photo, ...) becomes a mask.
+        Packing strategies can be tuned with:
           stack_rotations : preference order of the rotation types tried for stacks
           fold_first      : try the most folded shape first
         '''
-        if shape not in ('box', 'cylinder'):
-            raise ValueError("shape must be 'box' or 'cylinder'")
+        if shape not in ('box', 'cylinder', 'mask'):
+            raise ValueError("shape must be 'box', 'cylinder' or 'mask'")
         self.shape = shape
+        self.mask_cell = float(mask_cell)
+        self._mask_sat = None
+        if shape == 'mask':
+            if mask is None:
+                raise ValueError("shape='mask' needs a mask")
+            m = np.asarray(mask, dtype=bool)
+            # summed-area table: number of cells inside any rectangle in O(1)
+            self._mask_sat = np.zeros((m.shape[0] + 1, m.shape[1] + 1), dtype=np.int64)
+            self._mask_sat[1:, 1:] = m.astype(np.int64).cumsum(0).cumsum(1)
+            self.mask = m
         self.stack_rotations = None
         self.fold_first = False
         self.partno = partno
@@ -250,7 +265,24 @@ class Bin:
             x1, y1 = x0 + float(dimension[0]), y0 + float(dimension[1])
             far_x, far_y = max(abs(x0), abs(x1)), max(abs(y0), abs(y1))
             return far_x * far_x + far_y * far_y <= r * r + 1e-6
+        if self.shape == 'mask':
+            return self._maskCovers(float(pivot[0]), float(pivot[1]), float(dimension[0]), float(dimension[1]))
         return True
+
+
+    def _maskCovers(self, x, y, w, h):
+        ''' every cell under [x, x+w) x [y, y+h) belongs to the mask '''
+        c = self.mask_cell
+        nx, ny = self.mask.shape
+        i0, j0 = int(math.floor(x / c + 1e-9)), int(math.floor(y / c + 1e-9))
+        i1, j1 = int(math.ceil((x + w) / c - 1e-9)), int(math.ceil((y + h) / c - 1e-9))
+        if i0 < 0 or j0 < 0 or i1 > nx or j1 > ny:
+            return False
+        if i1 <= i0 or j1 <= j0:
+            return True
+        sat = self._mask_sat
+        inside = sat[i1, j1] - sat[i0, j1] - sat[i1, j0] + sat[i0, j0]
+        return bool(inside == (i1 - i0) * (j1 - j0))
 
 
     def seedPivots(self):
@@ -258,19 +290,36 @@ class Bin:
         extra pivots on the floor of a cylinder: the pivots next to the items often fall outside
         the circle, so a grid of points inside it is tried too
         '''
-        if self.shape != 'cylinder':
+        if self.shape == 'box':
             return []
         if getattr(self, '_seeds', None) is None:
-            d = float(self.width)
             n = 8
-            step = d / n
             nd = self.number_of_decimals
             seeds = []
-            for j in range(n):
-                for i in range(n):
-                    x, y = i * step, j * step
-                    if self._inside([x, y, 0], [step / 4, step / 4, 0]):
-                        seeds.append([set2Decimal(x, nd), set2Decimal(y, nd), set2Decimal(0, nd)])
+            if self.shape == 'mask':
+                # first cell of the mask on each row, plus a coarse grid inside it
+                c = self.mask_cell
+                nx, ny = self.mask.shape
+                pts = set()
+                for j in range(ny):
+                    cols = np.flatnonzero(self.mask[:, j])
+                    if cols.size:
+                        pts.add((int(cols[0]), j))
+                stride_x, stride_y = max(1, nx // n), max(1, ny // n)
+                for i in range(0, nx, stride_x):
+                    for j in range(0, ny, stride_y):
+                        if self.mask[i, j]:
+                            pts.add((i, j))
+                for i, j in sorted(pts, key=lambda q: (q[1], q[0])):
+                    seeds.append([set2Decimal(i * c, nd), set2Decimal(j * c, nd), set2Decimal(0, nd)])
+            else:
+                d = float(self.width)
+                step = d / n
+                for j in range(n):
+                    for i in range(n):
+                        x, y = i * step, j * step
+                        if self._inside([x, y, 0], [step / 4, step / 4, 0]):
+                            seeds.append([set2Decimal(x, nd), set2Decimal(y, nd), set2Decimal(0, nd)])
             self._seeds = seeds
         return self._seeds
 
@@ -494,7 +543,7 @@ class Bin:
         [x,y,z] = [float(pivot[0]),float(pivot[1]),float(pivot[2])]
 
         for _ in range(3):
-            if self.shape != 'cylinder':   # pushing towards x=0 / y=0 would leave the circle
+            if self.shape == 'box':   # pushing towards x=0 / y=0 would leave a circle or mask
                 # fix height
                 y = self.checkHeight([x,x+float(w),y,y+float(h),z,z+float(d)])
                 # fix width
@@ -534,14 +583,18 @@ class Bin:
         return max((self._top(i) for i in self.items), default=0.0)
 
 
-    def contentExtents(self):
-        ''' (x, y, z) extent of the content '''
+    def contentBounds(self):
+        ''' (min_x, min_y, max_x, max_y, max_z) of the content '''
+        if not self.items:
+            return 0.0, 0.0, 0.0, 0.0, 0.0
+        mnx = mny = math.inf
         ex = ey = ez = 0.0
         for i in self.items:
             w, h, d = (float(v) for v in i.getDimension())
             x, y, z = (float(v) for v in i.position)
+            mnx, mny = min(mnx, x), min(mny, y)
             ex, ey, ez = max(ex, x + w), max(ey, y + h), max(ez, z + d)
-        return ex, ey, ez
+        return mnx, mny, ex, ey, ez
 
 
     def contentEnvelope(self):
@@ -549,10 +602,11 @@ class Bin:
         volume of the box around the content: what a flexible container (bale) is charged by.
         In a cylinder the footprint is fixed by the circle, so only the height counts.
         '''
-        ex, ey, ez = self.contentExtents()
-        if self.shape == 'cylinder':
-            return float(self.width) ** 2 * ez
-        return ex * ey * ez
+        mnx, mny, ex, ey, ez = self.contentBounds()
+        if self.shape in ('cylinder', 'mask'):
+            # the outline is fixed by the circle / mask: only the height counts
+            return float(self.width) * float(self.height) * ez
+        return (ex - mnx) * (ey - mny) * ez
 
 
     def _rebuildFitItems(self):
@@ -596,8 +650,8 @@ class Bin:
         lowest (then nearest to the origin)
         '''
         best = None
-        ex, ey, ez = self.contentExtents()
-        cyl = self.shape == 'cylinder'
+        mnx, mny, ex, ey, ez = self.contentBounds()
+        cyl = self.shape in ('cylinder', 'mask')
         for shape in self._shapes(item):
             dims = shape.getDimension()
             for pivot in self._pivots():
@@ -610,8 +664,9 @@ class Bin:
                 if pos is None or not self._inside(pos, dims):
                     continue
                 top = float(pos[2]) + float(dims[2])
-                env = (1.0 if cyl else max(ex, float(pos[0]) + float(dims[0])) * max(ey, float(pos[1]) + float(dims[1]))) \
-                    * max(ez, top)
+                x0, y0 = float(pos[0]), float(pos[1])
+                env = (1.0 if cyl else (max(ex, x0 + float(dims[0])) - min(mnx, x0))
+                       * (max(ey, y0 + float(dims[1])) - min(mny, y0))) * max(ez, top)
                 key = (round(env, 3), top, float(pos[2]), float(pos[1]), float(pos[0]))
                 if best is None or key < best[0]:
                     best = (key, copy.copy(shape), dims)
