@@ -63,7 +63,7 @@
   <div class="card">
     <h2>Importar da planilha</h2>
     <div class="row"><label>Código do produto<input id="imp-codigo" placeholder="F2505"></label></div>
-    <p class="hint">Cole as linhas do Excel: tamanho, comprimento (cm), largura (cm), espessura (cm), peso (g), dobras possíveis, índice de compressão. A linha de cabeçalho é ignorada.</p>
+    <p class="hint">Cole as linhas do Excel: tamanho, comprimento (cm), largura (cm), espessura (cm), peso (g), dobras possíveis, índice de compressão e, opcional, compressão lateral. A linha de cabeçalho é ignorada.</p>
     <textarea id="imp-texto" placeholder="38	34,33	24,67	2,20	508,33	1	0,95"></textarea>
     <div class="row" style="margin-top:8px"><button class="p" id="imp-btn">Importar</button></div>
     <div class="msg" id="imp-msg"></div>
@@ -84,9 +84,10 @@
       <label>Tipo<select id="p-empilhavel"><option value="1">Vestuário (empilha)</option><option value="0">Rígido</option></select></label>
       <label>Orientação<select id="p-orientacao_livre"><option value="1">Livre (deitada ou em pé)</option><option value="0">Só deitada</option></select></label>
       <label>Curvar em L<select id="p-curvavel"><option value="1">Pode (ocupa cantos)</option><option value="0">Não</option></select></label>
+      <label>Compressão lateral<input id="p-compressao_lateral" type="number" step="0.01" min="0.01" max="1" value="1"></label>
       <button class="p" id="p-salvar">Salvar</button>
     </div>
-    <p class="hint">Compressão de 0 a 1: 1 = não comprime; 0,95 = a espessura cai para 95% na pilha. Cada dobra corta o comprimento ou a largura ao meio e dobra a espessura. Curvar em L: quando a peça reta não cabe num vão, ela é curvada a 90° (os dois braços somam o comprimento) para ocupar um canto.</p>
+    <p class="hint">Compressão de 0 a 1: 1 = não comprime; 0,95 = a espessura cai para 95% na pilha. Cada dobra corta o comprimento ou a largura ao meio e dobra a espessura. Curvar em L: quando a peça reta não cabe num vão, ela é curvada a 90° (os dois braços somam o comprimento) para ocupar um canto. Compressão lateral: quanto comprimento e largura cedem quando apertados (1 = nada; 0,9 = até 90%), ex.: duas calças lado a lado no fundo do fardo; só é usada quando a peça normal não cabe.</p>
     <div class="msg" id="p-msg"></div>
   </div>
 
@@ -108,6 +109,7 @@
       <label>Raio do canto cm<input id="e-raio_canto" type="number" step="0.5" min="0" value="0"></label>
       <label>Manga deitada cm<input id="e-manga_cm" type="number" step="0.5" min="0" value="0"></label>
       <label>Folga por ponta cm<input id="e-folga_ponta_cm" type="number" step="0.5" min="0" value="0"></label>
+      <label>Arrumação (fardo)<select id="e-pecas_deitadas"><option value="1">peças deitadas (como o estoque faz)</option><option value="0">livre (deitadas ou em pé)</option></select></label>
       <label>Comprimento cm (interno)<input id="e-comprimento" type="number" step="0.1" min="0"></label>
       <label>Largura cm<input id="e-largura" type="number" step="0.1" min="0"></label>
       <label>Altura cm (fardo: máxima)<input id="e-altura" type="number" step="0.1" min="0"></label>
@@ -190,17 +192,17 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 // ---------------- produtos
-const P_FIELDS = ['descricao','comprimento','largura','espessura','peso_g','dobras','compressao'];
+const P_FIELDS = ['descricao','comprimento','largura','espessura','peso_g','dobras','compressao','compressao_lateral'];
 let produtos = [];
 async function carregarProdutos() {
   produtos = await api('GET', '/api/produtos');
   const f = $('#p-filtro').value.trim().toUpperCase();
   const rows = produtos.filter(p => !f || p.codigo.includes(f));
-  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th>Orientação</th><th>Curva L</th><th></th></tr>' +
+  $('#p-tabela').innerHTML = '<tr><th>Código</th><th>Tam.</th><th>Descrição</th><th class="n">Compr.</th><th class="n">Larg.</th><th class="n">Esp.</th><th class="n">Peso g</th><th class="n">Dobras</th><th class="n">Compr.%</th><th>Tipo</th><th>Orientação</th><th>Curva L</th><th class="n">Compr. lat.</th><th></th></tr>' +
     rows.map((p, i) => `<tr><td>${esc(p.codigo)}</td><td>${esc(p.tamanho)}</td><td>${esc(p.descricao)}</td>
       <td class="n">${fmt(p.comprimento)}</td><td class="n">${fmt(p.largura)}</td><td class="n">${fmt(p.espessura)}</td>
       <td class="n">${fmt(p.peso_g)}</td><td class="n">${p.dobras}</td><td class="n">${fmt(p.compressao)}</td>
-      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td><td>${p.empilhavel ? (p.orientacao_livre ? 'livre' : 'só deitada') : ''}</td><td>${p.empilhavel ? (p.curvavel ? 'sim' : 'não') : ''}</td>
+      <td>${p.empilhavel ? 'vestuário' : 'rígido'}</td><td>${p.empilhavel ? (p.orientacao_livre ? 'livre' : 'só deitada') : ''}</td><td>${p.empilhavel ? (p.curvavel ? 'sim' : 'não') : ''}</td><td class="n">${p.empilhavel ? fmt(p.compressao_lateral) : ''}</td>
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#p-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
     const p = rows[b.dataset.edit];
@@ -298,6 +300,7 @@ async function carregarEmbalagens() {
       <td><button class="s" data-edit="${i}">editar</button> <button class="s" data-del="${i}">apagar</button></td></tr>`).join('');
   $('#e-tabela').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
     const e = rows[b.dataset.edit]; $('#e-codigo').value = e.codigo; $('#e-ativo').value = e.ativo ? '1' : '0';
+    $('#e-pecas_deitadas').value = e.pecas_deitadas ? '1' : '0';
     E_FIELDS.forEach(k => $('#e-' + k).value = e[k] ?? ''); $('#e-molde').value = moldeTexto(e.molde);
     desenharPreview(); window.scrollTo(0, 0);
   });
@@ -308,7 +311,7 @@ async function carregarEmbalagens() {
 }
 $('#e-salvar').onclick = async () => {
   const cod = $('#e-codigo').value.trim(); if (!cod) return msg('#e-msg', 'Informe o código');
-  const body = {ativo: $('#e-ativo').value === '1'};
+  const body = {ativo: $('#e-ativo').value === '1', pecas_deitadas: $('#e-pecas_deitadas').value === '1'};
   E_FIELDS.forEach(k => { const v = $('#e-' + k).value; body[k] = ['descricao','tipo','forma'].includes(k) ? v : (v === '' ? null : num(v)); });
   if (body.forma === 'cilindrico' && body.largura == null) body.largura = body.comprimento;
   if (body.raio_canto == null) body.raio_canto = 0;

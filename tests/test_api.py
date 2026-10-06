@@ -165,3 +165,17 @@ def test_escolher_caixa_ou_fardo(client):
         assert {v["embalagem"] for v in r.json()["volumes"]} == {esperado}
     r = client.post("/api/cubagem", json={"itens": itens, "tipo_embalagem": "caixa", "embalagens": ["MANGA"]})
     assert r.status_code == 422 and "escolha" in r.json()["detail"]
+
+
+def test_compressao_lateral_e_pecas_deitadas(client):
+    r = client.post("/api/produtos/importar", json={"codigo": "F2505", "texto": "40\t34,5\t26,67\t2,2\t506,33\t1\t0,95\t0,9"})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/produtos").json()[0]["compressao_lateral"] == 0.9
+    r = client.put("/api/embalagens/MANGA", json={"tipo": "fardo", "forma": "manga", "manga_cm": 80, "raio_canto": 6,
+                                                   "folga_ponta_cm": 5, "peso_max_g": 37000})
+    assert r.status_code == 200 and client.get("/api/embalagens").json()[0]["pecas_deitadas"] == 1
+    r = client.post("/api/cubagem", json={"itens": [{"codigo": "F2505", "tamanho": "40", "quantidade": 20}], "iteracoes": 3})
+    assert r.status_code == 200, r.text
+    v = r.json()["volumes"][0]
+    assert {q["eixo"] for q in v["layout"]} == {"z"}                       # camadas na horizontal
+    assert not any("em pé" in i["forma"] for i in v["itens"])

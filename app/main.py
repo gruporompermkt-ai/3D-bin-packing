@@ -42,6 +42,7 @@ class ProdutoIn(BaseModel):
     empilhavel: bool = True
     orientacao_livre: bool = True
     curvavel: bool = True
+    compressao_lateral: float = Field(1.0, gt=0, le=1, description="1 = não cede; 0,9 = comprimento/largura cedem até 90%")
 
 
 class EmbalagemIn(BaseModel):
@@ -50,6 +51,7 @@ class EmbalagemIn(BaseModel):
     forma: Literal["flexivel", "retangular", "cilindrico", "arredondado", "molde", "manga"] = "flexivel"
     manga_cm: float = Field(0, ge=0, description="fardo de manga: largura do tubo deitado no rolo (cm)")
     folga_ponta_cm: float = Field(0, ge=0, description="fardo de manga: cm a mais em cada ponta franzida")
+    pecas_deitadas: bool = Field(True, description="fardo: camadas sempre na horizontal (como o estoque arruma)")
     raio_canto: float = Field(0, ge=0, description="cm, fardo arredondado")
     molde: Optional[List[List[float]]] = Field(None, description="fardo molde: [[x, y], ...] de 0 a 1")
     comprimento: Optional[float] = Field(None, gt=0, description="cm, interno (dispensado no fardo de manga)")
@@ -102,15 +104,15 @@ def salvar_produto(codigo: str, tamanho: str, p: ProdutoIn):
     with db.conectar() as con:
         con.execute(
             """INSERT INTO produtos (codigo, tamanho, descricao, comprimento, largura, espessura, peso_g, dobras, compressao,
-                                   empilhavel, orientacao_livre, curvavel)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                                   empilhavel, orientacao_livre, curvavel, compressao_lateral)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(codigo, tamanho) DO UPDATE SET descricao=excluded.descricao, comprimento=excluded.comprimento,
                  largura=excluded.largura, espessura=excluded.espessura, peso_g=excluded.peso_g, dobras=excluded.dobras,
                  compressao=excluded.compressao, empilhavel=excluded.empilhavel, orientacao_livre=excluded.orientacao_livre,
-                 curvavel=excluded.curvavel,
+                 curvavel=excluded.curvavel, compressao_lateral=excluded.compressao_lateral,
                  atualizado_em=datetime('now','localtime')""",
             (_norm(codigo), tamanho.strip().upper(), p.descricao, p.comprimento, p.largura, p.espessura, p.peso_g,
-             p.dobras, p.compressao, int(p.empilhavel), int(p.orientacao_livre), int(p.curvavel)))
+             p.dobras, p.compressao, int(p.empilhavel), int(p.orientacao_livre), int(p.curvavel), p.compressao_lateral))
     return {"ok": True}
 
 
@@ -147,8 +149,10 @@ def parse_planilha(texto):
             tam, comp, larg, esp, peso = campos[0], *(_num(c) for c in campos[1:5])
             dobras = int(round(_num(campos[5]))) if len(campos) > 5 and campos[5] else 0
             comp_ratio = _num(campos[6]) if len(campos) > 6 and campos[6] else 1.0
+            lateral = _num(campos[7]) if len(campos) > 7 and campos[7] else 1.0
             linhas.append(dict(tamanho=tam.upper(), produto=ProdutoIn(
-                comprimento=comp, largura=larg, espessura=esp, peso_g=peso, dobras=dobras, compressao=comp_ratio)))
+                comprimento=comp, largura=larg, espessura=esp, peso_g=peso, dobras=dobras, compressao=comp_ratio,
+                compressao_lateral=lateral)))
         except Exception as e:  # noqa: BLE001 - devolve o erro da linha para o usuário
             erros.append({"linha": n, "texto": linha, "erro": str(e).splitlines()[0]})
     return linhas, erros
@@ -208,17 +212,17 @@ def salvar_embalagem(codigo: str, e: EmbalagemIn):
     with db.conectar() as con:
         con.execute(
             """INSERT INTO embalagens (codigo, descricao, tipo, forma, comprimento, largura, altura, peso_max_g, tara_g, custo, ativo,
-                                     raio_canto, molde, manga_cm, folga_ponta_cm)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                     raio_canto, molde, manga_cm, folga_ponta_cm, pecas_deitadas)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(codigo) DO UPDATE SET descricao=excluded.descricao, tipo=excluded.tipo, forma=excluded.forma,
                  raio_canto=excluded.raio_canto, molde=excluded.molde, manga_cm=excluded.manga_cm,
-                 folga_ponta_cm=excluded.folga_ponta_cm,
+                 folga_ponta_cm=excluded.folga_ponta_cm, pecas_deitadas=excluded.pecas_deitadas,
                  comprimento=excluded.comprimento, largura=excluded.largura, altura=excluded.altura,
                  peso_max_g=excluded.peso_max_g, tara_g=excluded.tara_g, custo=excluded.custo, ativo=excluded.ativo,
                  atualizado_em=datetime('now','localtime')""",
             (_norm(codigo), e.descricao, e.tipo, forma, comprimento, largura, altura, e.peso_max_g, e.tara_g, e.custo,
              int(e.ativo), e.raio_canto if forma in ("arredondado", "manga") else 0, molde,
-             e.manga_cm if forma == "manga" else 0, e.folga_ponta_cm if forma == "manga" else 0))
+             e.manga_cm if forma == "manga" else 0, e.folga_ponta_cm if forma == "manga" else 0, int(e.pecas_deitadas)))
     return {"ok": True}
 
 
@@ -244,7 +248,7 @@ def calcular(pedido: PedidoIn):
                 continue
             linhas.append((Produto(r["codigo"], r["tamanho"], r["comprimento"], r["largura"], r["espessura"], r["peso_g"],
                                    r["dobras"], r["compressao"], bool(r["empilhavel"]), bool(r["orientacao_livre"]),
-                                   bool(r["curvavel"])),
+                                   bool(r["curvavel"]), r["compressao_lateral"] or 1),
                            it.quantidade))
         if faltando:
             raise HTTPException(422, {"mensagem": "produtos sem cadastro", "produtos": faltando})
@@ -252,7 +256,7 @@ def calcular(pedido: PedidoIn):
     catalogo = [Embalagem(r["codigo"], r["comprimento"], r["largura"], r["altura"], r["peso_max_g"], r["tara_g"],
                           r["custo"], r["tipo"], r["forma"], r["raio_canto"] or 0,
                           json.loads(r["molde"]) if r["molde"] else None, r["manga_cm"] or 0,
-                          r["folga_ponta_cm"] or 0) for r in rows]
+                          r["folga_ponta_cm"] or 0, bool(r["pecas_deitadas"])) for r in rows]
     if pedido.tipo_embalagem:
         catalogo = [e for e in catalogo if e.tipo == pedido.tipo_embalagem]
     if pedido.embalagens:

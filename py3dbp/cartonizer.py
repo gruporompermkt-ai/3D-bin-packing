@@ -65,6 +65,7 @@ class Produto:
     empilhavel: bool = True     # False = item rígido (gira em qualquer eixo, um a um)
     orientacao_livre: bool = True   # vestuário: True = pode ficar em pé (de lado); False = só deitada
     curvavel: bool = True           # vestuário: pode ser curvado em L para ocupar um canto
+    compressao_lateral: float = 1.0  # vestuário: 1 = não cede; 0,88 = comprimento/largura cedem até 88% (só se preciso)
 
     @property
     def sku(self):
@@ -86,6 +87,7 @@ class Embalagem:
     molde: Optional[list] = None    # fardo molde: [[x, y], ...] de 0 a 1
     manga_cm: float = 0.0       # fardo de manga: largura do tubo deitado no rolo (cm)
     folga_ponta_cm: float = 0.0     # fardo de manga: comprimento a mais em cada ponta franzida (cm)
+    pecas_deitadas: bool = False    # fardo: camadas sempre na horizontal (como o estoque arruma, para comprimir)
 
     COMPRIMENTO_MAX_MANGA = 300.0   # cm: "sem limite", só para o empacotador ter um teto
 
@@ -226,7 +228,7 @@ def _items_for(linhas):
             # quantity > 1 garante que até uma peça só seja tratada como pilha (dobra/curva/compressão)
             items.append(Item('{}#{}'.format(p.sku, n), p.sku, 'cube', whd, p.peso_g, 2, 100, bool(p.orientacao_livre),
                               '#4472C4', fold_count=p.dobras, compress_ratio=p.compressao, quantity=int(qtd), sku=p,
-                              bendable=bool(p.curvavel)))
+                              bendable=bool(p.curvavel), squeeze=p.compressao_lateral))
         else:
             for k in range(int(qtd)):
                 items.append(Item('{}#{}.{}'.format(p.sku, n, k), p.sku, 'cube', whd, p.peso_g, 1, 100, True,
@@ -258,19 +260,35 @@ ESTRATEGIAS_FIXAS = [
 ]
 
 
-def estrategias(n):
-    ''' as fixas primeiro; o resto são variações aleatórias (semente fixa: o resultado é reprodutível) '''
-    out = ESTRATEGIAS_FIXAS[:max(1, n)]
+# duas variantes (larguras lado a lado num sentido ou no outro), como as duas calças no fundo do fardo
+COMPRIMIDAS_PRIMEIRO = [
+    ('comprimida na lateral primeiro', DEITADA[::-1] + EM_PE_Y[::-1] + EM_PE_X[::-1], False, True),
+    ('comprimida na lateral primeiro (girada)', DEITADA + EM_PE_Y + EM_PE_X, False, True),
+]
+
+
+def estrategias(n, lateral=False):
+    '''
+    as fixas primeiro; o resto são variações aleatórias (semente fixa: o resultado é reprodutível).
+    Cada uma: (nome, ordem das orientações, dobrar primeiro, maiores primeiro, comprimir na lateral primeiro).
+    `lateral`: algum produto tem compressão lateral; aí entra a estratégia que aperta as peças antes
+    (ex.: duas calças lado a lado), como o estoque faz.
+    '''
+    fixas = [e + (False,) for e in ESTRATEGIAS_FIXAS]
+    if lateral:
+        fixas[1:1] = [e + (True,) for e in COMPRIMIDAS_PRIMEIRO]
+    out = fixas[:max(1, n)]
     rnd = random.Random(1234)
     for i in range(len(out), n):
         ordem = list(RotationType.ALL)
         rnd.shuffle(ordem)
-        out.append(('aleatória {}'.format(i - len(ESTRATEGIAS_FIXAS) + 1), ordem, rnd.random() < 0.3, rnd.random() < 0.7))
+        est = ('aleatória {}'.format(i - len(fixas) + 1), ordem, rnd.random() < 0.3, rnd.random() < 0.7)
+        out.append(est + ((rnd.random() < 0.5) if lateral else False,))
     return out
 
 
 def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True):
-    nome, ordem, dobrar_primeiro, maiores_primeiro = estrategia
+    nome, ordem, dobrar_primeiro, maiores_primeiro, comprimir_primeiro = estrategia
     packer = Packer()
     capacidade = embalagem.peso_max_g - embalagem.tara_g
     if formato == 'cilindrico':
@@ -284,6 +302,11 @@ def _pack_strategy(embalagem, dims, linhas, estrategia, formato, compactar=True)
                 shape='cylinder' if formato == 'cilindrico' else 'box')
     b.stack_rotations = ordem
     b.fold_first = dobrar_primeiro
+    b.squeeze_first = comprimir_primeiro
+    if embalagem.tipo == 'fardo' and embalagem.pecas_deitadas:
+        # camadas na horizontal do fardo pronto. A manga é montada em pé (eixo do tubo = z), então
+        # a vertical do fardo deitado é o eixo y da montagem
+        b.stack_axes = {1} if formato == 'manga' else {2}
     packer.addBin(b)
     for it in _items_for(linhas):
         packer.addItem(it)
@@ -319,12 +342,14 @@ def _contorno(embalagem, formato, comprimento, largura):
 def _volume_de(items, embalagem, dims, nome, formato):
     vol = Volume(embalagem, dims_empacotamento=tuple(dims), estrategia=nome, formato=formato)
     agrupado = {}
+    # eixo vertical do volume pronto: na manga (montada em pé, mostrada deitada) é o y da montagem
+    vertical = 1 if formato == 'manga' else 2
     for it in items:
         p = it.sku
         forma = it.foldDescription() if it.is_stack else 'rígido'
         if it.bend:
             forma = 'curvada em L'
-        elif it.is_stack and Bin.STACK_AXIS[it.rotation_type] != 2:
+        elif it.is_stack and Bin.STACK_AXIS[it.rotation_type] != vertical:
             forma += ', em pé'
         chave = (p.sku, forma)
         agrupado[chave] = agrupado.get(chave, 0) + it.quantity
@@ -363,7 +388,7 @@ def pack_one(embalagem, linhas, iteracoes=ITERACOES_PADRAO, dims=None, formatos=
     melhor = None
     for formato in formatos or embalagem.formas:
         for d in ([dims] if dims else embalagem.dims_iniciais(formato)):
-            for est in estrategias(iteracoes):
+            for est in estrategias(iteracoes, any(p.compressao_lateral < 1 for p, _ in linhas)):
                 vol, sobra = _pack_strategy(embalagem, d, linhas, est, formato, compactar)
                 if melhor is None or _score(vol) < _score(melhor[0]):
                     melhor = (vol, sobra)

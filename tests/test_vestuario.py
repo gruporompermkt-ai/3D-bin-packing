@@ -323,3 +323,48 @@ def test_mais_iteracoes_nunca_piora():
     emb = Embalagem("002", 30, 40, 150, 35000, tipo="fardo", forma="retangular")
     vols = [cartonize([(p40, 69)], [emb], iteracoes=n)["volumes"][0]["volume_m3"] for n in (1, 3, 8)]
     assert vols[2] <= vols[1] <= vols[0]
+
+
+# ---------------------------------------------------------------- compressão lateral e peças deitadas
+def test_compressao_lateral_poe_duas_calcas_lado_a_lado():
+    # caixa 48 de largura: 2 x 26,67 = 53,3 não cabe; comprimidas a 88% (23,5 cada) cabem lado a lado
+    def calca(squeeze):
+        return Item("F2505/40", "F2505/40", "cube", (34.5, 26.67, 2.2), 506.33, 2, 100, False, "blue",
+                    compress_ratio=0.95, quantity=20, squeeze=squeeze)
+    _, sem = empacota((48, 36, 21), calca(1.0))
+    assert pecas(sem) == 10                       # 1 coluna: 21 / 2,09
+    p = Packer()
+    com = Bin("cx", (48, 36, 21), 100000)
+    com.squeeze_first = True                      # estratégia "comprimida na lateral primeiro"
+    com.stack_rotations = [1, 0]                  # larguras lado a lado (comprimento no sentido de 36)
+    p.addBin(com)
+    p.addItem(calca(0.88))
+    p.pack(bigger_first=True, number_of_decimals=1)
+    assert pecas(com) == 20                       # 2 colunas lado a lado
+    assert all("comprimida na lateral" in i.foldDescription() for i in com.items)
+    sem_sobreposicao(com)
+    # pelo cartonize a estratégia entra sozinha quando o produto tem compressão lateral
+    prod = Produto("F2505", "40", 34.5, 26.67, 2.2, 506.33, 0, 0.95, compressao_lateral=0.88)
+    vol, sobra = pack_one(Embalagem("CX", 48, 36, 21, 100000), [(prod, 20)], iteracoes=3)
+    assert vol.pecas == 20 and sobra == []
+
+
+def test_compressao_lateral_so_quando_precisa():
+    item = Item("F", "F", "cube", (34.5, 26.67, 2.2), 506.33, 2, 100, False, "blue", compress_ratio=0.95,
+                quantity=10, squeeze=0.88)
+    _, b = empacota((60, 40, 30), item)
+    assert pecas(b) == 10 and not any(i.isSqueezed() for i in b.items)
+
+
+def test_fardo_com_pecas_deitadas():
+    from py3dbp.cartonizer import Embalagem as E
+    p40 = Produto("F2505", "40", 34.5, 26.67, 2.2, 506.33, 1, 0.95)
+    for forma, eixo in (("manga", "z"), ("retangular", "z")):
+        extra = dict(manga_cm=80, raio_canto=6, folga_ponta_cm=5) if forma == "manga" else {}
+        fd = E("FD", 30 if forma != "manga" else 0, 40 if forma != "manga" else 0, 150 if forma != "manga" else 0,
+               37000, tipo="fardo", forma=forma, pecas_deitadas=True, **extra)
+        r = cartonize([(p40, 40)], [fd], iteracoes=3)
+        v = r["volumes"][0]
+        assert r["totais"]["pecas"] == 40
+        # no resultado (fardo pronto/deitado) toda pilha cresce na vertical
+        assert {q["eixo"] for q in v["layout"]} == {eixo}, (forma, [q["eixo"] for q in v["layout"]])

@@ -19,7 +19,7 @@ def _load_matplotlib():
 class Item:
 
     def __init__(self, partno,name,typeof, WHD, weight, level, loadbear, updown, color,
-                 fold_count=0, compress_ratio=1.0, quantity=1, sku=None, bendable=False):
+                 fold_count=0, compress_ratio=1.0, quantity=1, sku=None, bendable=False, squeeze=1.0):
         '''
         WHD    : for stacks (quantity > 1, fold_count > 0 or compress_ratio < 1) it is the size of ONE piece:
                  W = length, H = width, D = thickness. The pieces are stacked along D (laid flat).
@@ -30,7 +30,12 @@ class Item:
         quantity       : number of identical pieces represented by this item.
         bendable       : the piece may be bent at 90 degrees (L shape, laid flat) to take a corner
                          when the straight shape does not fit.
+        squeeze        : 0 < s <= 1. Lateral compression: length and width of a piece may be squeezed
+                         to s of their size (e.g. two trousers side by side in a slightly narrower bale).
+                         Only used when the piece does not fit at its normal size.
         '''
+        if not 0 < squeeze <= 1:
+            raise ValueError('squeeze must be in (0, 1]')
         if not 0 < compress_ratio <= 1:
             raise ValueError('compress_ratio must be in (0, 1]')
         if int(fold_count) != fold_count or fold_count < 0:
@@ -60,7 +65,8 @@ class Item:
         self.fold_count = int(fold_count)
         self.compress_ratio = float(compress_ratio)
         self.quantity = int(quantity)
-        self.is_stack = self.quantity > 1 or self.fold_count > 0 or self.compress_ratio < 1
+        self.squeeze = float(squeeze)
+        self.is_stack = self.quantity > 1 or self.fold_count > 0 or self.compress_ratio < 1 or self.squeeze < 1
         self.piece_whd = (float(WHD[0]), float(WHD[1]), float(WHD[2]))
         self.unit_weight = float(weight)
         self.fold_state = 0
@@ -79,18 +85,31 @@ class Item:
         '''
         All shapes of ONE piece, least folded first:
         [(w, h, thickness_in_stack, folds_on_length, folds_on_width), ...]
+        With lateral compression (squeeze < 1) every fold state is followed by its squeezed version,
+        so a piece is squeezed before being folded and only when the normal size does not fit.
         '''
         cache = self.__dict__.get('_fold_states')
         if cache is not None:
             return cache
         W, H, D = self.piece_whd
         states = []
+        squeezed = set()
         for n in range(self.fold_count + 1):
             for a in range(n, -1, -1):
                 b = n - a
                 states.append((W / 2 ** a, H / 2 ** b, D * 2 ** n * self.compress_ratio, a, b))
+                if self.squeeze < 1:
+                    squeezed.add(len(states))
+                    states.append((W / 2 ** a * self.squeeze, H / 2 ** b * self.squeeze,
+                                   D * 2 ** n * self.compress_ratio, a, b))
         self._fold_states = states
+        self._squeezed_states = squeezed
         return states
+
+
+    def isSqueezed(self):
+        self.foldStates()
+        return self.fold_state in self.__dict__.get('_squeezed_states', ())
 
 
     def setShape(self, fold_state, quantity):
@@ -117,7 +136,10 @@ class Item:
             parts.append('{}x no comprimento'.format(a))
         if b:
             parts.append('{}x na largura'.format(b))
-        return 'dobrada ' + ' e '.join(parts) if parts else 'sem dobra'
+        texto = 'dobrada ' + ' e '.join(parts) if parts else 'sem dobra'
+        if self.isSqueezed():
+            texto += ', comprimida na lateral'
+        return texto
 
 
     def formatNumbers(self, number_of_decimals):
@@ -202,6 +224,10 @@ class Bin:
             self._mask_sat[1:, 1:] = m.astype(np.int64).cumsum(0).cumsum(1)
             self.mask = m
         self.stack_rotations = None
+        # axes a stack may grow along (0 = W, 1 = H, 2 = D); None = any. E.g. {2}: pieces always laid flat
+        self.stack_axes = None
+        # try the laterally squeezed shapes before the normal ones
+        self.squeeze_first = False
         self.fold_first = False
         self.partno = partno
         self.width = WHD[0]
@@ -369,6 +395,13 @@ class Bin:
         return False
 
 
+    def _stackRotations(self, item):
+        ''' rotations a stack may take: free or flat (item.updown), limited by stack_axes '''
+        if self.stack_axes is not None:
+            return [r for r in RotationType.ALL if self.STACK_AXIS[r] in self.stack_axes]
+        return RotationType.ALL if item.updown else RotationType.Notupdown
+
+
     # axis along which a stack grows (where its `depth` lands) for each rotation type
     STACK_AXIS = {RotationType.RT_WHD: 2, RotationType.RT_HWD: 2, RotationType.RT_HDW: 1,
                   RotationType.RT_WDH: 1, RotationType.RT_DHW: 0, RotationType.RT_DWH: 0}
@@ -386,12 +419,16 @@ class Bin:
         if max_by_weight < 1:
             return False
         bin_dims = [float(self.width), float(self.height), float(self.depth)]
-        allowed = RotationType.ALL if item.updown else RotationType.Notupdown
+        allowed = self._stackRotations(item)
         order = self.stack_rotations or RotationType.ALL
         rotations = [r for r in order if r in allowed]
         folds = list(enumerate(item.foldStates()))
         if self.fold_first:
             folds.reverse()
+        if self.squeeze_first:
+            # laterally squeezed shapes first (stable sort keeps the fold order)
+            apertadas = item.__dict__.get('_squeezed_states', ())
+            folds.sort(key=lambda f: f[0] not in apertadas)
 
         for fold_state, (w, h, t, _, _) in folds:
             for rotation in rotations:
@@ -449,6 +486,8 @@ class Bin:
         '''
         if not (item.bendable and item.is_stack):
             return False
+        if self.stack_axes is not None and 2 not in self.stack_axes:
+            return False    # the L is laid flat on the floor: only when stacks may grow upwards
         length, width, _ = item.piece_whd
         t = item.foldStates()[0][2]
         nd = self.number_of_decimals
@@ -633,7 +672,7 @@ class Bin:
     def _shapes(self, item):
         ''' every shape the item may take: rotations (and, for stacks, fold states) keeping its quantity '''
         if item.is_stack:
-            rotations = RotationType.ALL if item.updown else RotationType.Notupdown
+            rotations = self._stackRotations(item)
             for fold_state in range(len(item.foldStates())):
                 for rotation in rotations:
                     c = copy.copy(item)

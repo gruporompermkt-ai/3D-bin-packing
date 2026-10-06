@@ -58,6 +58,8 @@ MIGRACOES = [
     ("embalagens", "molde", "TEXT"),
     ("embalagens", "manga_cm", "REAL NOT NULL DEFAULT 0"),
     ("embalagens", "folga_ponta_cm", "REAL NOT NULL DEFAULT 0"),
+    ("embalagens", "pecas_deitadas", "INTEGER NOT NULL DEFAULT 1"),
+    ("produtos", "compressao_lateral", "REAL NOT NULL DEFAULT 1"),
 ]
 
 
