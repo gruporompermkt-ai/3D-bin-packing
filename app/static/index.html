@@ -136,6 +136,8 @@
       <label>Nº do pedido<input id="c-pedido" size="10"></label>
       <label>Fator de cubagem kg/m³<input id="c-fator" type="number" step="1" min="1" value="300"></label>
       <label>Iterações (mais = mais denso, mais lento)<input id="c-iter" type="number" step="1" min="1" max="40" value="8"></label>
+      <label>Usar<select id="c-tipo"><option value="">automático (o mais vantajoso)</option><option value="caixa">só caixa</option><option value="fardo">só fardo</option></select></label>
+      <label>Embalagem<select id="c-embalagem"><option value="">qualquer uma do tipo</option></select></label>
       <label>Nº de fardos (opcional)<input id="c-volumes" type="number" step="1" min="1" max="200" placeholder="pelo peso"></label>
     </div>
     <p class="hint">Uma linha por item: código, tamanho e quantidade (ex.: <code>F2505 38 120</code>). Também aceita colar do Excel.</p>
@@ -273,8 +275,22 @@ function desenharPreview() {
   }
 }
 ['#e-comprimento','#e-largura','#e-raio_canto','#e-molde','#e-forma','#e-tipo','#e-manga_cm'].forEach(s => $(s).addEventListener('input', desenharPreview));
+let embalagensAtivas = [];
+function atualizarEscolhaEmbalagem() {
+  // lista da aba Cubagem: só as ativas do tipo escolhido
+  const tipo = $('#c-tipo').value, sel = $('#c-embalagem'), atual = sel.value;
+  const nomes = {caixa: 'caixa', fardo: 'fardo'};
+  sel.innerHTML = '<option value="">qualquer uma do tipo</option>' + embalagensAtivas.filter(e => !tipo || e.tipo === tipo)
+    .map(e => `<option value="${esc(e.codigo)}">${esc(e.codigo)} — ${nomes[e.tipo]}${e.descricao ? ' · ' + esc(e.descricao) : ''}</option>`).join('');
+  if ([...sel.options].some(o => o.value === atual)) sel.value = atual;
+  // nº de fardos só faz sentido quando pode sair fardo
+  $('#c-volumes').disabled = tipo === 'caixa';
+}
+$('#c-tipo').onchange = atualizarEscolhaEmbalagem;
 async function carregarEmbalagens() {
   const rows = await api('GET', '/api/embalagens');
+  embalagensAtivas = rows.filter(e => e.ativo);
+  atualizarEscolhaEmbalagem();
   $('#e-tabela').innerHTML = '<tr><th>Código</th><th>Descrição</th><th>Tipo</th><th class="n">C×L×A cm</th><th class="n">Peso máx. g</th><th class="n">Tara g</th><th class="n">Custo</th><th>Ativa</th><th></th></tr>' +
     rows.map((e, i) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.descricao)}</td><td>${esc(e.tipo)}${e.tipo === 'fardo' ? ' ' + esc({flexivel: 'flexível', retangular: 'retangular', cilindrico: 'cilíndrico', arredondado: `arredondado (r ${fmt(e.raio_canto,1)})`, molde: `molde (${(e.molde || []).length} pontos)`, manga: `manga ${fmt(e.manga_cm,0)} cm`}[e.forma] || e.forma) : ''}</td>
       <td class="n">${e.forma === 'manga' && e.tipo === 'fardo' ? `seção pelo contorno de ${fmt(2 * e.manga_cm,0)} cm, comprimento livre` : `${e.tipo === 'fardo' ? 'até ' : ''}${fmt(e.comprimento,1)} × ${fmt(e.largura,1)} × ${fmt(e.altura,1)}`}</td><td class="n">${fmt(e.peso_max_g,0)}</td>
@@ -323,7 +339,8 @@ $('#c-calc').onclick = async () => {
   if (!itens.length) return msg('#c-msg', 'Nenhuma linha válida (código tamanho quantidade)');
   $('#c-msg').textContent = 'Calculando...'; $('#c-msg').className = 'msg';
   try {
-    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null, iteracoes: Math.round(num($('#c-iter').value)) || 8, volumes: Math.round(num($('#c-volumes').value)) || null});
+    const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null, iteracoes: Math.round(num($('#c-iter').value)) || 8, volumes: $('#c-volumes').disabled ? null : (Math.round(num($('#c-volumes').value)) || null),
+      tipo_embalagem: $('#c-tipo').value || null, embalagens: $('#c-embalagem').value ? [$('#c-embalagem').value] : null});
     $('#c-msg').textContent = '';
     const box = $('#c-res'); box.style.display = 'block';
     if (!r.ok) { box.innerHTML = `<p class="msg err">${esc(r.motivo)}</p>`; return; }

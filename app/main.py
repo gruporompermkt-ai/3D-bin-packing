@@ -78,6 +78,7 @@ class PedidoIn(BaseModel):
     fator_cubagem: Optional[float] = Field(None, gt=0)
     embalagens: Optional[List[str]] = None
     volumes: Optional[int] = Field(None, ge=1, le=200, description="número de fardos que o cliente quer (fardo de manga)")
+    tipo_embalagem: Optional[Literal["caixa", "fardo"]] = Field(None, description="só caixas ou só fardos (vazio = todas)")
     iteracoes: int = Field(ITERACOES_PADRAO, ge=1, le=40)
 
 
@@ -252,11 +253,14 @@ def calcular(pedido: PedidoIn):
                           r["custo"], r["tipo"], r["forma"], r["raio_canto"] or 0,
                           json.loads(r["molde"]) if r["molde"] else None, r["manga_cm"] or 0,
                           r["folga_ponta_cm"] or 0) for r in rows]
+    if pedido.tipo_embalagem:
+        catalogo = [e for e in catalogo if e.tipo == pedido.tipo_embalagem]
     if pedido.embalagens:
         quero = {_norm(c) for c in pedido.embalagens}
         catalogo = [e for e in catalogo if e.codigo in quero]
     if not catalogo:
-        raise HTTPException(422, "nenhuma embalagem ativa cadastrada")
+        raise HTTPException(422, "nenhuma embalagem ativa com essa escolha" if (pedido.tipo_embalagem or pedido.embalagens)
+                            else "nenhuma embalagem ativa cadastrada")
     resultado = cartonize(linhas, catalogo, pedido.fator_cubagem or FATOR_CUBAGEM, pedido.iteracoes, pedido.volumes)
     resultado["pedido"] = pedido.pedido
     return resultado

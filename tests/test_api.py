@@ -150,3 +150,18 @@ def test_embalagem_manga_e_numero_de_fardos(client):
     assert r.status_code == 200, r.text
     res = r.json()
     assert res["totais"]["volumes"] == 2 and [sum(i["qtd"] for i in v["itens"]) for v in res["volumes"]] == [20, 20]
+
+
+def test_escolher_caixa_ou_fardo(client):
+    client.put("/api/produtos/F2505/38", json={"comprimento": 34.33, "largura": 24.67, "espessura": 2.2, "peso_g": 508.33,
+                                               "dobras": 1, "compressao": 0.95})
+    client.put("/api/embalagens/CX", json={"comprimento": 60, "largura": 40, "altura": 40, "peso_max_g": 30000})
+    client.put("/api/embalagens/MANGA", json={"tipo": "fardo", "forma": "manga", "manga_cm": 80, "raio_canto": 6,
+                                               "folga_ponta_cm": 5, "peso_max_g": 37000})
+    itens = [{"codigo": "F2505", "tamanho": "38", "quantidade": 20}]
+    for tipo, esperado in (("caixa", "CX"), ("fardo", "MANGA")):
+        r = client.post("/api/cubagem", json={"itens": itens, "tipo_embalagem": tipo, "iteracoes": 2})
+        assert r.status_code == 200, r.text
+        assert {v["embalagem"] for v in r.json()["volumes"]} == {esperado}
+    r = client.post("/api/cubagem", json={"itens": itens, "tipo_embalagem": "caixa", "embalagens": ["MANGA"]})
+    assert r.status_code == 422 and "escolha" in r.json()["detail"]
