@@ -138,3 +138,17 @@ as caixas reais couberam. O cadastro da F2505 no servidor foi atualizado para es
 (`dados/F2505.tsv` guarda a medição original, com 0,95).
 
 Modelo de frete: `python -m ml.frete` (frete real do CT-e, 80% treino / 20% teste). Requer `requirements-ml.txt`.
+
+## Acesso ao Sisplan (somente consulta)
+
+Toda leitura do Sisplan passa por `scripts/sisplan.sh` (que roda `scripts/sisplan.js` no container do Estoque AR, no .95):
+
+```
+./scripts/sisplan.sh extrair > dados/historico/sisplan.json
+echo "select ..." | ./scripts/sisplan.sh consulta
+```
+
+O usuário do banco (`consulta`) não tem modo só leitura no papel e não deve ser alterado (é padrão do Sisplan;
+o ajuste foi pedido à Sisplan). Por isso a leitura é forçada no script: sessão com
+`default_transaction_read_only=on` (conferida antes de consultar), cada consulta em `BEGIN READ ONLY ... ROLLBACK`
+e só SELECT/WITH de um comando, sem palavras de escrita. Não abrir conexão por outro caminho.

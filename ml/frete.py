@@ -68,7 +68,8 @@ def montar_base(caminho=ORIGEM, caminho_cte=CTE):
     nf = vol[['pedido', 'fatura']].drop_duplicates().merge(notas[['fatura', 'val_produtos']], on='fatura', how='left')
     nf = nf.groupby('pedido')['val_produtos'].sum().rename('valor_mercadoria').reset_index()
 
-    cte = pd.DataFrame(json.load(open(caminho_cte, encoding='utf-8')))
+    # scripts/sisplan.sh extrair já traz o CT-e no mesmo arquivo; cte.json fica para extrações antigas
+    cte = pd.DataFrame(d['cte'] if 'cte' in d else json.load(open(caminho_cte, encoding='utf-8')))
     cte['frete_real'] = cte['frete_real'].astype(float)
     cte = cte.drop_duplicates(['pedido', 'cte']).groupby('pedido')['frete_real'].sum().reset_index()
 
