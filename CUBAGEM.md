@@ -128,3 +128,13 @@ informe o código e cole as linhas do Excel (vírgula decimal aceita; cabeçalho
 
 - calibração do índice de compressão com volumes reais;
 - leitura de pedidos/produtos do Sisplan.
+
+## Calibração com o histórico real (07/10/2026)
+
+`python -m ml.comparar_cubagem` compara a cubagem com os volumes reais do Sisplan (medidas digitadas no
+PEDIDO3.OBS). Nos 20 volumes que levaram só F2505 (11 fardos, 9 caixas), compressão de espessura 0,95
+deixava o fardo 1,32x maior que o real; **0,7 com compressão lateral 0,92** bateu (mediana 1,00) e todas
+as caixas reais couberam. O cadastro da F2505 no servidor foi atualizado para esses valores
+(`dados/F2505.tsv` guarda a medição original, com 0,95).
+
+Modelo de frete: `python -m ml.frete` (frete real do CT-e, 80% treino / 20% teste). Requer `requirements-ml.txt`.
