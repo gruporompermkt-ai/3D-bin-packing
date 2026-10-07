@@ -1,5 +1,7 @@
 # DATA_MAPPING — Inteligência de Fretes (Etapa 0)
 
+> Versão mantida no projeto Fretes: `fox-fretes/docs/DATA_MAPPING.md`. Esta cópia fica como referência da Cubagem.
+
 Mapeamento dos dados logísticos no ERP Sisplan (Postgres 192.168.0.94, banco `15037P`, schema `sisplan`).
 Levantado em 07/10/2026 com consultas somente leitura (`scripts/sisplan.sh`), a partir de:
 o banco (catálogo e contagens), os logs de tela do Sisplan em `\\192.168.0.94\Sisplan\Agora`
@@ -44,12 +46,14 @@ Um pedido pode ter vários volumes e mais de uma nota.
 ```
 nota_ref_001.nota_ref = nota_001.fatura          -- nota de venda referenciada
 nota_entra_001.notafiscal = nota_ref_001.nota     -- nº do CT-e
+nota_entra_001.credor = nota_ref_001.codcli       -- emissor do CT-e registrado na referência
 nota_entra_001.tipo = '57'                        -- documento CT-e
-nota_entra_001.credor = nota_001.transport        -- CT-e emitido pela transportadora da nota
 ```
 O relatório R10 do Sisplan não confere o emissor do CT-e. Sem essa conferência, o número do CT-e casa com documentos de outra
-transportadora (9 números de CT-e repetidos entre credores). Com ela, 6.538 de 7.071 ligações (92%) confirmam;
-as outras 533 vão para a fila de qualidade. 70 notas de venda têm mais de um CT-e (complemento/reentrega): somar e marcar.
+transportadora (9 números de CT-e repetidos entre credores). `nota_ref_001.codcli` guarda o emissor do CT-e e bate com o
+lançamento em 7.040 de 7.071 ligações (99,6%). O emissor difere de `nota_001.transport` em 502 casos (nota sem
+transportadora ou troca/redespacho): o realizado vale, e a diferença vai para a fila de qualidade.
+70 notas de venda têm mais de um CT-e (complemento/reentrega): somar e marcar.
 
 ### 2.3 Transportadora utilizada (prioridade)
 1. `nota_entra_001.credor` do CT-e ligado (quem cobrou);
