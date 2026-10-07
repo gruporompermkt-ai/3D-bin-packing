@@ -142,6 +142,13 @@
       <label>Embalagem<select id="c-embalagem"><option value="">qualquer uma do tipo</option></select></label>
       <label>Nº de fardos (opcional)<input id="c-volumes" type="number" step="1" min="1" max="200" placeholder="pelo peso"></label>
     </div>
+    <div class="row" id="c-frete" style="display:none">
+      <label>CEP de destino<input id="c-cep" size="10" placeholder="00000-000"></label>
+      <label>UF<input id="c-uf" size="3" maxlength="2" placeholder="pelo CEP"></label>
+      <label>Transportadora<select id="c-transp"><option value="">comparar as que atendem a UF</option></select></label>
+      <label>Valor da mercadoria R$<input id="c-valor" type="number" step="0.01" min="0"></label>
+    </div>
+    <p class="hint" id="c-frete-hint" style="display:none"></p>
     <p class="hint">Uma linha por item: código, tamanho e quantidade (ex.: <code>F2505 38 120</code>). Também aceita colar do Excel.</p>
     <textarea id="c-itens" placeholder="F2505 38 120&#10;F2505 40 80"></textarea>
     <div class="row" style="margin-top:8px"><button class="p" id="c-calc">Calcular</button></div>
@@ -331,6 +338,30 @@ function dimTxt(v) {
   if (v.manga_cm) t += `, manga ${fmt(v.manga_cm,0)} cm`;
   return t;
 }
+// ---------------- estimativa de frete (modelo treinado com os CT-e reais)
+function freteHtml(f) {
+  if (!f) return '';
+  if (!f.disponivel) return `<p class="hint">Frete: ${esc(f.motivo)}</p>`;
+  const e = f.estimativas, menor = e[0].valor;
+  return `<div class="vol"><h3>Frete estimado (destino ${esc(f.uf)})</h3>
+    <div class="tbl"><table><tr><th>Transportadora</th><th class="n">Estimativa</th><th class="n">Faixa provável</th><th class="n">Pedidos p/ a UF</th></tr>
+    ${e.map(x => `<tr${x.valor === menor && e.length > 1 ? ' style="font-weight:600"' : ''}><td>${esc(x.nome)}</td><td class="n">R$ ${fmt(x.valor)}</td>
+      <td class="n">R$ ${fmt(x.valor * .8)} – ${fmt(x.valor * 1.2)}</td><td class="n">${x.pedidos_uf}</td></tr>`).join('')}
+    </table></div>
+    <p class="hint">Estimativa pelo histórico de CT-e: erro típico ${fmt(f.precisao.erro_tipico_pct,0)}%; ${fmt(f.precisao.dentro_20_pct,0)}% dos pedidos de teste ficaram na faixa de ±20%.
+    ${f.sem_valor_mercadoria ? '<b>Sem o valor da mercadoria a estimativa fica bem menos precisa.</b>' : ''} Não substitui a cotação.</p></div>`;
+}
+async function carregarFrete() {
+  try {
+    const f = await api('GET', '/api/frete');
+    if (!f.disponivel) return;
+    $('#c-frete').style.display = ''; $('#c-frete-hint').style.display = '';
+    $('#c-frete-hint').textContent = `Frete estimado: informe o destino (opcional). Modelo treinado com ${f.pedidos_treino} pedidos reais (${f.periodo.join(' a ')}).`;
+    $('#c-transp').insertAdjacentHTML('beforeend', f.transportadoras.map(t =>
+      `<option value="${esc(t.codigo)}">${esc(t.nome)} (${t.pedidos})</option>`).join(''));
+  } catch (e) { /* sem modelo: a cubagem segue normal */ }
+}
+
 $('#c-calc').onclick = async () => {
   const itens = [];
   for (const linha of $('#c-itens').value.split('\n')) {
@@ -343,7 +374,9 @@ $('#c-calc').onclick = async () => {
   $('#c-msg').textContent = 'Calculando...'; $('#c-msg').className = 'msg';
   try {
     const r = await api('POST', '/api/cubagem', {pedido: $('#c-pedido').value, itens, fator_cubagem: num($('#c-fator').value) || null, iteracoes: Math.round(num($('#c-iter').value)) || 8, volumes: $('#c-volumes').disabled ? null : (Math.round(num($('#c-volumes').value)) || null),
-      tipo_embalagem: $('#c-tipo').value || null, embalagens: $('#c-embalagem').value ? [$('#c-embalagem').value] : null});
+      tipo_embalagem: $('#c-tipo').value || null, embalagens: $('#c-embalagem').value ? [$('#c-embalagem').value] : null,
+      cep: $('#c-cep').value.trim() || null, uf: $('#c-uf').value.trim().toUpperCase() || null,
+      transportadora: $('#c-transp').value || null, valor_mercadoria: num($('#c-valor').value) || null});
     $('#c-msg').textContent = '';
     const box = $('#c-res'); box.style.display = 'block';
     if (!r.ok) { box.innerHTML = `<p class="msg err">${esc(r.motivo)}</p>`; return; }
@@ -353,6 +386,7 @@ $('#c-calc').onclick = async () => {
       <div><b>${fmt(t.peso_real_kg)} kg</b><span>peso real</span></div><div><b>${fmt(t.peso_taxavel_kg)} kg</b><span>peso taxável</span></div>
       ${t.custo_total != null ? `<div><b>R$ ${fmt(t.custo_total)}</b><span>embalagens</span></div>` : ''}</div>
       <p class="hint">Critério: ${esc(r.criterio)} · fator ${fmt(r.fator_cubagem,0)} kg/m³ · ${r.iteracoes} iterações por volume</p>` +
+      freteHtml(r.frete) +
       r.volumes.map((v, i) => `<div class="vol"><div class="row" style="justify-content:space-between"><h3>Volume ${i + 1}: ${v.tipo === 'fardo' ? 'fardo ' + ({cilindrico: 'cilíndrico ', arredondado: 'arredondado ', molde: 'molde ', manga: 'de manga '}[v.forma] || '') : ''}${esc(v.embalagem)} (${dimTxt(v)})</h3>
         <button class="s" data-ver="${i}">Ver 3D</button></div>
         <div class="hint">ocupação ${fmt(v.ocupacao_pct,1)}% · estratégia: ${esc(v.estrategia)} · real ${fmt(v.peso_real_kg)} kg · cubado ${fmt(v.peso_cubado_kg)} kg · taxável ${fmt(v.peso_taxavel_kg)} kg</div>
@@ -511,7 +545,7 @@ const viewer = (() => {
   return {mostrar};
 })();
 
-carregarProdutos(); carregarEmbalagens();
+carregarProdutos(); carregarEmbalagens(); carregarFrete();
 </script>
 </body>
 </html>

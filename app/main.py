@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from py3dbp import moldes
 from py3dbp.cartonizer import ITERACOES_PADRAO, Embalagem, Produto, cartonize
 
-from . import db
+from . import db, frete
 
 FATOR_CUBAGEM = float(os.environ.get("FATOR_CUBAGEM", "300"))
 STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -82,6 +82,11 @@ class PedidoIn(BaseModel):
     volumes: Optional[int] = Field(None, ge=1, le=200, description="número de fardos que o cliente quer (fardo de manga)")
     tipo_embalagem: Optional[Literal["caixa", "fardo"]] = Field(None, description="só caixas ou só fardos (vazio = todas)")
     iteracoes: int = Field(ITERACOES_PADRAO, ge=1, le=40)
+    # estimativa de frete (opcional): destino, transportadora e valor da mercadoria
+    cep: Optional[str] = Field(None, max_length=12)
+    uf: Optional[str] = Field(None, min_length=2, max_length=2)
+    transportadora: Optional[str] = Field(None, max_length=10, description="código da transportadora no Sisplan")
+    valor_mercadoria: Optional[float] = Field(None, ge=0)
 
 
 # ---------------------------------------------------------------- produtos
@@ -267,7 +272,16 @@ def calcular(pedido: PedidoIn):
                             else "nenhuma embalagem ativa cadastrada")
     resultado = cartonize(linhas, catalogo, pedido.fator_cubagem or FATOR_CUBAGEM, pedido.iteracoes, pedido.volumes)
     resultado["pedido"] = pedido.pedido
+    if pedido.cep or pedido.uf:
+        resultado["frete"] = frete.estimar(resultado, pedido.cep, pedido.uf, pedido.transportadora,
+                                           pedido.valor_mercadoria)
     return resultado
+
+
+@app.get("/api/frete")
+def frete_info():
+    ''' modelo de frete: se está instalado, precisão no teste e transportadoras conhecidas '''
+    return frete.info()
 
 
 @app.get("/api/health")

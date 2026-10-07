@@ -7,3 +7,5 @@ noused
 **/__pycache__
 *.json
 !tests/baseline/original.json
+dados/historico
+dados/modelos

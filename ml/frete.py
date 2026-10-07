@@ -178,8 +178,17 @@ def treinar(caminho=ORIGEM, saida=SAIDA):
     importancia = sorted(zip(X.columns, imp.importances_mean), key=lambda t: -t[1])
 
     os.makedirs(saida, exist_ok=True)
-    final = Log(modelo_boosting()).fit(X, y)       # modelo de uso: refeito com 100% dos dados
-    joblib.dump(dict(modelo=final, numericas=NUMERICAS, categoricas=CATEGORICAS, fator_cubagem=FATOR_CUBAGEM),
+    # modelo de uso: refeito com 100% dos dados. Grava só objetos do sklearn (o app não importa este módulo)
+    final = modelo_boosting().fit(X, np.log(y))
+    transp = (usados.groupby(['transp', 'transportadora']).agg(pedidos=('pedido', 'size'),
+                                                               ufs=('uf', lambda s: s.value_counts().to_dict()))
+              .reset_index().sort_values('pedidos', ascending=False))
+    joblib.dump(dict(pipeline=final, alvo='log', numericas=NUMERICAS, categoricas=CATEGORICAS,
+                     fator_cubagem=FATOR_CUBAGEM, teste=res['boosting']['teste'],
+                     periodo=[str(usados['data'].min().date()), str(usados['data'].max().date())],
+                     pedidos_treino=int(len(usados)),
+                     transportadoras=[dict(codigo=r.transp, nome=r.transportadora, pedidos=int(r.pedidos), ufs=r.ufs)
+                                      for r in transp.itertuples()]),
                 os.path.join(saida, 'frete.joblib'))
 
     prev = modelos['boosting'].predict(X_te)
